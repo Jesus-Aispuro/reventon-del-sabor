@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>El Reventón del Sabor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --cream:#FBF3E4;
+    --paper:#FFFCF6;
+    --charcoal:#2E2417;
+    --corn:#F2B705;
+    --corn-dark:#D99A00;
+    --chili:#D6482B;
+    --chili-dark:#B83A21;
+    --green:#5F8A52;
+    --green-dark:#4A6E40;
+    --line:#E7D6AC;
+    --muted:#8A7A57;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--cream);
+    color:var(--charcoal);
+    font-family:'Nunito Sans', system-ui, sans-serif;
+    min-height:100vh;
+    padding-bottom:84px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  h1,h2,h3,.brand{font-family:'Fredoka', system-ui, sans-serif;}
+
+  /* Header */
+  header{
+    background:var(--corn);
+    padding:18px 20px 22px;
+    border-radius:0 0 26px 26px;
+    box-shadow:0 4px 0 var(--corn-dark);
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute; right:-20px; top:-20px;
+    width:110px;height:110px;border-radius:50%;
+    background:rgba(255,255,255,0.15);
+  }
+  .brand{
+    display:flex; align-items:flex-start; gap:10px;
+    font-size:20px; line-height:1.15; font-weight:600; color:var(--charcoal);
+    position:relative; z-index:1;
+  }
+  .brand svg{width:32px;height:32px;flex-shrink:0; margin-top:2px;}
+  .subtitle{
+    font-size:13px; color:#5c4a1f; margin-top:2px; font-weight:600;
+    position:relative; z-index:1;
+  }
+
+  main{padding:16px; max-width:520px; margin:0 auto;}
+
+  .card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .card h2{margin:0 0 12px; font-size:17px; font-weight:600;}
+
+  /* Bottom nav */
+  nav.tabs{
+    position:fixed; bottom:0; left:0; right:0;
+    background:var(--paper);
+    border-top:1px solid var(--line);
+    display:flex;
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    z-index:50;
+  }
+  nav.tabs button{
+    flex:1; background:none; border:none; padding:8px 4px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    font-family:'Nunito Sans', sans-serif; font-size:11.5px; font-weight:700;
+    color:var(--muted); cursor:pointer; border-radius:12px;
+  }
+  nav.tabs button.active{color:var(--chili); background:#FBEAE1;}
+  nav.tabs button svg{width:22px;height:22px;}
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* Buttons */
+  .btn{
+    border:none; border-radius:14px; padding:13px 16px;
+    font-family:'Nunito Sans', sans-serif; font-weight:800; font-size:15px;
+    cursor:pointer; width:100%;
+  }
+  .btn-chili{background:var(--chili); color:#fff; box-shadow:0 3px 0 var(--chili-dark);}
+  .btn-chili:active{transform:translateY(2px); box-shadow:0 1px 0 var(--chili-dark);}
+  .btn-green{background:var(--green); color:#fff; box-shadow:0 3px 0 var(--green-dark);}
+  .btn-green:active{transform:translateY(2px); box-shadow:0 1px 0 var(--green-dark);}
+  .btn-ghost{background:none; border:2px solid var(--line); color:var(--charcoal);}
+  .btn-sm{padding:8px 12px; font-size:13px; width:auto;}
+
+  input, select{
+    width:100%; padding:11px 12px; border-radius:12px;
+    border:2px solid var(--line); background:#fff;
+    font-family:'Nunito Sans',sans-serif; font-size:15px; color:var(--charcoal);
+    margin-bottom:10px;
+  }
+  input:focus, select:focus{outline:2px solid var(--corn); border-color:var(--corn);}
+  label{font-size:12.5px; font-weight:700; color:var(--muted); display:block; margin-bottom:4px;}
+
+  /* Product grid (Vender) */
+  .prod-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .prod-btn{
+    background:var(--paper); border:2px solid var(--line); border-radius:16px;
+    padding:12px; text-align:left; cursor:pointer;
+  }
+  .prod-btn:active{border-color:var(--corn);}
+  .prod-name{font-weight:800; font-size:14.5px;}
+  .prod-price{color:var(--green-dark); font-weight:700; font-size:13.5px; margin-top:2px;}
+  .prod-stock{font-size:11.5px; color:var(--muted); margin-top:3px;}
+  .prod-stock.low{color:var(--chili);}
+
+  /* Cart */
+  .cart-row{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line);}
+  .cart-row:last-child{border-bottom:none;}
+  .qty-ctrl{display:flex; align-items:center; gap:8px;}
+  .qty-ctrl button{
+    width:28px;height:28px;border-radius:50%; border:none; background:var(--cream);
+    font-weight:800; font-size:16px; cursor:pointer; color:var(--charcoal);
+  }
+  .cart-total{display:flex; justify-content:space-between; font-weight:800; font-size:18px; margin-top:10px; padding-top:10px; border-top:2px dashed var(--line);}
+
+  .list-row{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); gap:10px;}
+  .list-row:last-child{border-bottom:none;}
+  .list-main{flex:1;}
+  .list-title{font-weight:800; font-size:14.5px;}
+  .list-sub{font-size:12px; color:var(--muted);}
+  .pill{background:var(--cream); border-radius:10px; padding:3px 8px; font-size:11.5px; font-weight:700;}
+
+  .empty{text-align:center; padding:30px 10px; color:var(--muted);}
+  .empty svg{width:48px;height:48px; margin-bottom:8px; opacity:0.5;}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .stat{background:var(--cream); border-radius:14px; padding:12px; text-align:center;}
+  .stat .num{font-family:'Fredoka'; font-size:22px; font-weight:600;}
+  .stat .lbl{font-size:11.5px; color:var(--muted); font-weight:700;}
+
+  .toast{
+    position:fixed; top:16px; left:50%; transform:translateX(-50%);
+    background:var(--charcoal); color:#fff; padding:10px 18px; border-radius:12px;
+    font-weight:700; font-size:14px; z-index:100; opacity:0; transition:opacity .25s;
+    pointer-events:none;
+  }
+  .toast.show{opacity:1;}
+
+  .modal-bg{
+    display:none; position:fixed; inset:0; background:rgba(46,36,23,0.45);
+    z-index:80; align-items:flex-end; justify-content:center;
+  }
+  .modal-bg.show{display:flex;}
+  .modal{
+    background:var(--paper); border-radius:22px 22px 0 0; padding:20px;
+    width:100%; max-width:520px; max-height:85vh; overflow-y:auto;
+  }
+  .modal h3{margin:0 0 12px;}
+  .close-x{float:right; background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted);}
+  .del-link{color:var(--chili); font-size:12.5px; font-weight:700; background:none; border:none; cursor:pointer; padding:4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 48 48" fill="none"><ellipse cx="24" cy="26" rx="13" ry="18" fill="#FFF6DC" stroke="#2E2417" stroke-width="2"/><path d="M14 14C16 20 18 32 15 42" stroke="#5F8A52" stroke-width="3" stroke-linecap="round"/><path d="M34 14C32 20 30 32 33 42" stroke="#5F8A52" stroke-width="3" stroke-linecap="round"/><circle cx="19" cy="14" r="1.6" fill="#D6482B"/><circle cx="24" cy="12" r="1.6" fill="#D6482B"/><circle cx="29" cy="14" r="1.6" fill="#D6482B"/><circle cx="17" cy="19" r="1.6" fill="#D6482B"/><circle cx="22" cy="18" r="1.6" fill="#D6482B"/><circle cx="27" cy="18" r="1.6" fill="#D6482B"/><circle cx="31" cy="19" r="1.6" fill="#D6482B"/><circle cx="19" cy="24" r="1.6" fill="#D6482B"/><circle cx="24" cy="23" r="1.6" fill="#D6482B"/><circle cx="29" cy="24" r="1.6" fill="#D6482B"/></svg>
+    <span>El Reventón del Sabor</span>
+  </div>
+  <div class="subtitle" id="dateLabel">Control de ventas e inventario</div>
+</header>
+
+<main>
+
+  <!-- VENDER -->
+  <section id="view-vender" class="view active">
+    <div class="card">
+      <h2>Toca un producto para agregarlo</h2>
+      <div id="prodGrid" class="prod-grid"></div>
+    </div>
+    <div class="card" id="cartCard" style="display:none;">
+      <h2>Venta actual</h2>
+      <div id="cartList"></div>
+      <div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-chili" id="cobrarBtn">Cobrar venta</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- INVENTARIO -->
+  <section id="view-inventario" class="view">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2 style="margin:0;">Productos</h2>
+        <button class="btn btn-green btn-sm" id="addProdBtn">+ Agregar</button>
+      </div>
+      <div id="invList"></div>
+    </div>
+  </section>
+
+  <!-- COMPRAS -->
+  <section id="view-compras" class="view">
+    <div class="card">
+      <h2>Registrar compra o gasto</h2>
+      <label>¿Qué compraste?</label>
+      <input type="text" id="compraDesc" placeholder="Ej: elotes, mayonesa, bolsas...">
+      <label>¿Cuánto gastaste?</label>
+      <input type="number" id="compraMonto" placeholder="$0" inputmode="decimal">
+      <button class="btn btn-chili" id="addCompraBtn">Guardar gasto</button>
+    </div>
+    <div class="card">
+      <h2>Historial de gastos</h2>
+      <div id="compraList"></div>
+    </div>
+  </section>
+
+  <!-- RESUMEN -->
+  <section id="view-resumen" class="view">
+    <div class="card">
+      <h2>Hoy</h2>
+      <div class="stat-grid">
+        <div class="stat"><div class="num" id="statVentasHoy">$0</div><div class="lbl">Vendido hoy</div></div>
+        <div class="stat"><div class="num" id="statGastosHoy">$0</div><div class="lbl">Gastado hoy</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Todo el tiempo</h2>
+      <div class="stat-grid">
+        <div class="stat"><div class="num" id="statVentasTotal">$0</div><div class="lbl">Ventas totales</div></div>
+        <div class="stat"><div class="num" id="statGastosTotal">$0</div><div class="lbl">Gastos totales</div></div>
+      </div>
+      <div style="margin-top:10px;" class="stat" >
+        <div class="num" id="statGanancia">$0</div><div class="lbl">Ganancia (ventas − gastos)</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Últimas ventas</h2>
+      <div id="ventasList"></div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button data-view="vender" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+    Vender
+  </button>
+  <button data-view="inventario">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8L12 3 3 8v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+    Inventario
+  </button>
+  <button data-view="compras">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l2.68 13.39A2 2 0 0 0 9.62 18H19a2 2 0 0 0 1.95-1.57L23 8H6"/><path d="M12 3v6"/><path d="M9 6h6"/></svg>
+    Compras
+  </button>
+  <button data-view="resumen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-4"/></svg>
+    Resumen
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<!-- Modal agregar/editar producto -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <button class="close-x" id="closeModal">×</button>
+    <h3 id="modalTitle">Nuevo producto</h3>
+    <label>Nombre</label>
+    <input type="text" id="pNombre" placeholder="Ej: Elote con todo">
+    <label>Precio de venta</label>
+    <input type="number" id="pPrecio" placeholder="$0" inputmode="decimal">
+    <label>Costo (lo que te cuesta hacerlo)</label>
+    <input type="number" id="pCosto" placeholder="$0" inputmode="decimal">
+    <label>Cantidad disponible</label>
+    <input type="number" id="pStock" placeholder="0" inputmode="numeric">
+    <button class="btn btn-green" id="saveProdBtn" style="margin-top:6px;">Guardar</button>
+    <button class="del-link" id="delProdBtn" style="margin-top:10px;">Eliminar producto</button>
+  </div>
+</div>
+
+<script>
+let productos = [];
+let ventas = [];
+let compras = [];
+let carrito = {}; // {productoId: cantidad}
+let editingProdId = null;
+
+const fmt = n => '$' + (Math.round(n*100)/100).toLocaleString('es-MX');
+const todayStr = () => new Date().toISOString().slice(0,10);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1600);
+}
+
+const firebaseConfig = {
+  apiKey: "AIzaSyASzoQRL0VE6my5qPafDakJG5iQChSKNrQ",
+  authDomain: "reventon-del-sabor.firebaseapp.com",
+  projectId: "reventon-del-sabor",
+  storageBucket: "reventon-del-sabor.firebasestorage.app",
+  messagingSenderId: "791483494902",
+  appId: "1:791483494902:web:95dec978f05d889ba297d7"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const docRef = db.collection('puesto').doc('data');
+
+const MENU_INICIAL = [
+  {id: uid(), nombre:'Tostilocos', precio:80, costo:0, stock:20},
+  {id: uid(), nombre:'Churrolocos', precio:100, costo:0, stock:20},
+  {id: uid(), nombre:'Cueritoslocos', precio:60, costo:0, stock:20},
+  {id: uid(), nombre:'Elote entero', precio:45, costo:0, stock:20},
+  {id: uid(), nombre:'Vaso chico', precio:45, costo:0, stock:20},
+  {id: uid(), nombre:'Vaso grande', precio:65, costo:0, stock:20},
+  {id: uid(), nombre:'Nachos chico', precio:60, costo:0, stock:20},
+  {id: uid(), nombre:'Nachos grande', precio:80, costo:0, stock:20},
+  {id: uid(), nombre:'Maruchan loca', precio:130, costo:0, stock:20},
+  {id: uid(), nombre:'Sabritas con queso', precio:40, costo:0, stock:20},
+  {id: uid(), nombre:'Tostielote', precio:80, costo:0, stock:20},
+  {id: uid(), nombre:'Coca-Cola 600ml', precio:25, costo:0, stock:20},
+  {id: uid(), nombre:'Coca-Cola 300ml', precio:15, costo:0, stock:20}
+];
+const MENU_VERSION = '2';
+let seeded = false;
+
+function startListener(){
+  docRef.onSnapshot(async (doc)=>{
+    const d = doc.exists ? doc.data() : {};
+    productos = d.productos || [];
+    ventas = d.ventas || [];
+    compras = d.compras || [];
+
+    if(!seeded && (productos.length === 0 || d.menu_version !== MENU_VERSION)){
+      seeded = true;
+      productos = JSON.parse(JSON.stringify(MENU_INICIAL));
+      await docRef.set({productos, menu_version: MENU_VERSION}, {merge:true});
+      return; // esto vuelve a disparar el snapshot con los datos ya guardados
+    }
+    renderAll();
+  }, (err)=>{
+    console.error(err);
+    showToast('No se pudo conectar a la base de datos');
+  });
+}
+
+async function saveProductos(){ await docRef.set({productos}, {merge:true}); }
+async function saveVentas(){ await docRef.set({ventas}, {merge:true}); }
+async function saveCompras(){ await docRef.set({compras}, {merge:true}); }
+
+function renderAll(){
+  renderProdGrid();
+  renderCart();
+  renderInventario();
+  renderCompras();
+  renderResumen();
+}
+
+// ---------- VENDER ----------
+function renderProdGrid(){
+  const grid = document.getElementById('prodGrid');
+  if(productos.length === 0){
+    grid.innerHTML = '<div class="empty">Todavía no tienes productos. Agrégalos en la pestaña Inventario.</div>';
+    return;
+  }
+  grid.innerHTML = productos.map(p => `
+    <button class="prod-btn" onclick="addToCart('${p.id}')" ${p.stock<=0?'style="opacity:0.45;"':''}>
+      <div class="prod-name">${escapeHtml(p.nombre)}</div>
+      <div class="prod-price">${fmt(p.precio)}</div>
+      <div class="prod-stock ${p.stock<=3?'low':''}">${p.stock<=0?'Sin stock':'Stock: '+p.stock}</div>
+    </button>
+  `).join('');
+}
+
+function addToCart(id){
+  const p = productos.find(x=>x.id===id);
+  if(!p || p.stock <= (carrito[id]||0)) { showToast('No hay más stock'); return; }
+  carrito[id] = (carrito[id]||0) + 1;
+  renderCart();
+}
+
+function changeCartQty(id, delta){
+  const p = productos.find(x=>x.id===id);
+  let q = (carrito[id]||0) + delta;
+  if(q <= 0){ delete carrito[id]; }
+  else if(p && q > p.stock){ showToast('No hay más stock'); return; }
+  else { carrito[id] = q; }
+  renderCart();
+}
+
+function renderCart(){
+  const ids = Object.keys(carrito);
+  const card = document.getElementById('cartCard');
+  const list = document.getElementById('cartList');
+  if(ids.length === 0){ card.style.display='none'; return; }
+  card.style.display='block';
+  let total = 0;
+  list.innerHTML = ids.map(id=>{
+    const p = productos.find(x=>x.id===id);
+    if(!p) return '';
+    const sub = p.precio * carrito[id];
+    total += sub;
+    return `<div class="cart-row">
+      <div><div class="list-title">${escapeHtml(p.nombre)}</div><div class="list-sub">${fmt(p.precio)} c/u</div></div>
+      <div class="qty-ctrl">
+        <button onclick="changeCartQty('${id}',-1)">−</button>
+        <span>${carrito[id]}</span>
+        <button onclick="changeCartQty('${id}',1)">+</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('cartTotal').textContent = fmt(total);
+}
+
+async function cobrarVenta(){
+  const ids = Object.keys(carrito);
+  if(ids.length === 0) return;
+  let total = 0;
+  const items = ids.map(id=>{
+    const p = productos.find(x=>x.id===id);
+    p.stock -= carrito[id];
+    const sub = p.precio * carrito[id];
+    total += sub;
+    return {productoId:id, nombre:p.nombre, cantidad:carrito[id], precioUnit:p.precio};
+  });
+  ventas.push({id:uid(), fecha:todayStr(), ts:Date.now(), items, total});
+  carrito = {};
+  await saveProductos();
+  await saveVentas();
+  renderAll();
+  showToast('Venta registrada: ' + fmt(total));
+}
+
+// ---------- INVENTARIO ----------
+function renderInventario(){
+  const list = document.getElementById('invList');
+  if(productos.length === 0){
+    list.innerHTML = '<div class="empty">Aún no tienes productos.</div>';
+    return;
+  }
+  list.innerHTML = productos.map(p=>`
+    <div class="list-row">
+      <div class="list-main">
+        <div class="list-title">${escapeHtml(p.nombre)}</div>
+        <div class="list-sub">Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)}</div>
+      </div>
+      <div class="pill ${p.stock<=3?'low':''}" style="${p.stock<=3?'background:#FBEAE1;color:#D6482B;':''}">Stock: ${p.stock}</div>
+      <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
+    </div>
+  `).join('');
+}
+
+function openNewProd(){
+  editingProdId = null;
+  document.getElementById('modalTitle').textContent = 'Nuevo producto';
+  document.getElementById('pNombre').value='';
+  document.getElementById('pPrecio').value='';
+  document.getElementById('pCosto').value='';
+  document.getElementById('pStock').value='';
+  document.getElementById('delProdBtn').style.display='none';
+  document.getElementById('modalBg').classList.add('show');
+}
+
+function openEditProd(id){
+  const p = productos.find(x=>x.id===id);
+  if(!p) return;
+  editingProdId = id;
+  document.getElementById('modalTitle').textContent = 'Editar producto';
+  document.getElementById('pNombre').value=p.nombre;
+  document.getElementById('pPrecio').value=p.precio;
+  document.getElementById('pCosto').value=p.costo;
+  document.getElementById('pStock').value=p.stock;
+  document.getElementById('delProdBtn').style.display='inline-block';
+  document.getElementById('modalBg').classList.add('show');
+}
+
+async function saveProd(){
+  const nombre = document.getElementById('pNombre').value.trim();
+  const precio = parseFloat(document.getElementById('pPrecio').value)||0;
+  const costo = parseFloat(document.getElementById('pCosto').value)||0;
+  const stock = parseInt(document.getElementById('pStock').value)||0;
+  if(!nombre){ showToast('Ponle un nombre'); return; }
+  if(editingProdId){
+    const p = productos.find(x=>x.id===editingProdId);
+    Object.assign(p, {nombre, precio, costo, stock});
+  }else{
+    productos.push({id:uid(), nombre, precio, costo, stock});
+  }
+  await saveProductos();
+  document.getElementById('modalBg').classList.remove('show');
+  renderAll();
+  showToast('Guardado');
+}
+
+async function delProd(){
+  if(!editingProdId) return;
+  productos = productos.filter(x=>x.id!==editingProdId);
+  await saveProductos();
+  document.getElementById('modalBg').classList.remove('show');
+  renderAll();
+  showToast('Producto eliminado');
+}
+
+// ---------- COMPRAS ----------
+async function addCompra(){
+  const desc = document.getElementById('compraDesc').value.trim();
+  const monto = parseFloat(document.getElementById('compraMonto').value)||0;
+  if(!desc || monto<=0){ showToast('Falta descripción o monto'); return; }
+  compras.push({id:uid(), fecha:todayStr(), ts:Date.now(), desc, monto});
+  await saveCompras();
+  document.getElementById('compraDesc').value='';
+  document.getElementById('compraMonto').value='';
+  renderAll();
+  showToast('Gasto guardado');
+}
+
+function renderCompras(){
+  const list = document.getElementById('compraList');
+  if(compras.length === 0){ list.innerHTML = '<div class="empty">Sin gastos registrados todavía.</div>'; return; }
+  const sorted = [...compras].sort((a,b)=>b.ts-a.ts).slice(0,30);
+  list.innerHTML = sorted.map(c=>`
+    <div class="list-row">
+      <div class="list-main">
+        <div class="list-title">${escapeHtml(c.desc)}</div>
+        <div class="list-sub">${c.fecha}</div>
+      </div>
+      <div class="pill">${fmt(c.monto)}</div>
+    </div>
+  `).join('');
+}
+
+// ---------- RESUMEN ----------
+function renderResumen(){
+  const hoy = todayStr();
+  const ventasHoy = ventas.filter(v=>v.fecha===hoy).reduce((s,v)=>s+v.total,0);
+  const gastosHoy = compras.filter(c=>c.fecha===hoy).reduce((s,c)=>s+c.monto,0);
+  const ventasTotal = ventas.reduce((s,v)=>s+v.total,0);
+  const gastosTotal = compras.reduce((s,c)=>s+c.monto,0);
+  document.getElementById('statVentasHoy').textContent = fmt(ventasHoy);
+  document.getElementById('statGastosHoy').textContent = fmt(gastosHoy);
+  document.getElementById('statVentasTotal').textContent = fmt(ventasTotal);
+  document.getElementById('statGastosTotal').textContent = fmt(gastosTotal);
+  document.getElementById('statGanancia').textContent = fmt(ventasTotal - gastosTotal);
+
+  const list = document.getElementById('ventasList');
+  if(ventas.length===0){ list.innerHTML='<div class="empty">Aún no hay ventas.</div>'; return; }
+  const sorted = [...ventas].sort((a,b)=>b.ts-a.ts).slice(0,15);
+  list.innerHTML = sorted.map(v=>`
+    <div class="list-row">
+      <div class="list-main">
+        <div class="list-title">${v.items.map(i=>i.cantidad+'x '+escapeHtml(i.nombre)).join(', ')}</div>
+        <div class="list-sub">${v.fecha}</div>
+      </div>
+      <div class="pill">${fmt(v.total)}</div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// ---------- NAV ----------
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+btn.dataset.view).classList.add('active');
+  });
+});
+
+document.getElementById('cobrarBtn').addEventListener('click', cobrarVenta);
+document.getElementById('addProdBtn').addEventListener('click', openNewProd);
+document.getElementById('saveProdBtn').addEventListener('click', saveProd);
+document.getElementById('delProdBtn').addEventListener('click', delProd);
+document.getElementById('closeModal').addEventListener('click', ()=>document.getElementById('modalBg').classList.remove('show'));
+document.getElementById('addCompraBtn').addEventListener('click', addCompra);
+
+document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
+
+startListener();
+</script>
+</body>
+</html>
