@@ -1,6 +1,7 @@
 let productos = [];
 let ventas = [];
 let compras = [];
+let ajustes = [];
 let carrito = {}; // {productoId: cantidad}
 let editingProdId = null;
 
@@ -61,6 +62,7 @@ function startListener(){
     productos = d.productos || [];
     ventas = d.ventas || [];
     compras = d.compras || [];
+    ajustes = d.ajustes || [];
 
     if(!seeded && (productos.length === 0 || d.menu_version !== MENU_VERSION)){
       seeded = true;
@@ -279,9 +281,13 @@ function renderInventario(){
         <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)}</div>
       </div>
       <div class="pill ${p.stock<=3?'low':''}" style="${p.stock<=3?'background:#FBEAE1;color:#D6482B;':''}">Stock: ${p.stock}</div>
-      <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAjuste('${p.id}')">Ajustar</button>
+      </div>
     </div>
   `).join('');
+  renderAjustes();
 }
 
 function openNewProd(){
@@ -337,6 +343,59 @@ async function delProd(){
   document.getElementById('modalBg').classList.remove('show');
   renderAll();
   showToast('Producto eliminado');
+}
+
+// ---------- AJUSTES / MERMA ----------
+let ajustandoProdId = null;
+
+function openAjuste(id){
+  const p = productos.find(x=>x.id===id);
+  if(!p) return;
+  ajustandoProdId = id;
+  document.getElementById('ajusteProdNombre').textContent = p.nombre;
+  document.getElementById('ajusteTipo').value = 'perdida';
+  document.getElementById('ajusteCantidad').value = '';
+  document.getElementById('ajusteMotivo').value = '';
+  document.getElementById('ajusteModalBg').classList.add('show');
+}
+
+async function guardarAjuste(){
+  const p = productos.find(x=>x.id===ajustandoProdId);
+  if(!p) return;
+  const tipo = document.getElementById('ajusteTipo').value; // 'perdida' o 'ganancia'
+  const cantidad = parseFloat(document.getElementById('ajusteCantidad').value) || 0;
+  const motivo = document.getElementById('ajusteMotivo').value.trim();
+  if(cantidad <= 0){ showToast('Pon una cantidad mayor a 0'); return; }
+
+  const delta = tipo === 'perdida' ? -cantidad : cantidad;
+  p.stock += delta;
+
+  ajustes.push({
+    id: uid(), fecha: todayStr(), ts: Date.now(),
+    productoId: p.id, productoNombre: p.nombre,
+    tipo, cantidad, motivo
+  });
+
+  await docRef.set({productos, ajustes}, {merge:true});
+  document.getElementById('ajusteModalBg').classList.remove('show');
+  renderAll();
+  showToast(tipo === 'perdida' ? 'Merma registrada' : 'Ajuste registrado');
+}
+
+function renderAjustes(){
+  const list = document.getElementById('ajusteList');
+  if(!list) return;
+  if(ajustes.length === 0){ list.innerHTML = '<div class="empty">Sin ajustes registrados todavía.</div>'; return; }
+  const sorted = [...ajustes].sort((a,b)=>b.ts-a.ts).slice(0,20);
+  list.innerHTML = sorted.map(a=>`
+    <div class="list-row">
+      <div class="list-main">
+        <div class="list-title">${escapeHtml(a.productoNombre)}${a.motivo ? ' · '+escapeHtml(a.motivo) : ''}</div>
+        <div class="list-sub">${a.fecha} · ${a.tipo === 'perdida' ? 'Merma / pérdida' : 'Ajuste a favor'}</div>
+      </div>
+      <div class="pill" style="${a.tipo==='perdida'?'background:#FBEAE1;color:#D6482B;':'background:#EAF3E6;color:#4A6E40;'}">${a.tipo==='perdida'?'−':'+'}${a.cantidad}</div>
+    </div>
+  `).join('');
 }
 
 // ---------- COMPRAS ----------
@@ -414,6 +473,8 @@ document.getElementById('saveProdBtn').addEventListener('click', saveProd);
 document.getElementById('delProdBtn').addEventListener('click', delProd);
 document.getElementById('closeModal').addEventListener('click', ()=>document.getElementById('modalBg').classList.remove('show'));
 document.getElementById('addCompraBtn').addEventListener('click', addCompra);
+document.getElementById('guardarAjusteBtn').addEventListener('click', guardarAjuste);
+document.getElementById('closeAjusteModal').addEventListener('click', ()=>document.getElementById('ajusteModalBg').classList.remove('show'));
 
 document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
 
