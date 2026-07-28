@@ -252,8 +252,7 @@ async function cobrarVenta(){
   descontarInsumosPorVenta(items); // no hace nada todavía, listo para cuando existan las recetas
   carrito = {};
   catState = {}; // cierra todas las categorías otra vez
-  await saveProductos();
-  await saveVentas();
+  await docRef.set({productos, ventas}, {merge:true}); // se guarda todo junto para que no se pisen los datos
   renderAll();
   showToast('Venta registrada: ' + fmt(total));
 }
