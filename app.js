@@ -7,7 +7,15 @@ let carrito = {}; // {productoId: cantidad}
 let editingProdId = null;
 
 const fmt = n => '$' + (Math.round(n*100)/100).toLocaleString('es-MX');
-const todayStr = () => new Date().toISOString().slice(0,10);
+// Fecha local del negocio (no UTC). Si se usa UTC, todo lo vendido después de las
+// 5 PM en Tijuana se contaría como del día siguiente.
+const todayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dia = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dia}`;
+};
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
 function showToast(msg){
