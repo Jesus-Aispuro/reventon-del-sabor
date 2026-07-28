@@ -51,6 +51,10 @@
       </div>
       <div id="invList"></div>
     </div>
+    <div class="card">
+      <h2>Historial de ajustes y merma</h2>
+      <div id="ajusteList"></div>
+    </div>
   </section>
 
   <!-- COMPRAS -->
@@ -135,6 +139,24 @@
     <input type="number" id="pStock" placeholder="0" inputmode="numeric">
     <button class="btn btn-green" id="saveProdBtn" style="margin-top:6px;">Guardar</button>
     <button class="del-link" id="delProdBtn" style="margin-top:10px;">Eliminar producto</button>
+  </div>
+</div>
+
+<!-- Modal de ajuste / merma de inventario -->
+<div class="modal-bg" id="ajusteModalBg">
+  <div class="modal">
+    <button class="close-x" id="closeAjusteModal">×</button>
+    <h3>Ajustar inventario — <span id="ajusteProdNombre"></span></h3>
+    <label>Tipo de ajuste</label>
+    <select id="ajusteTipo">
+      <option value="perdida">Merma / pérdida (se tiró, se echó a perder)</option>
+      <option value="ganancia">Ajuste a favor (había más de lo que marcaba)</option>
+    </select>
+    <label>Cantidad</label>
+    <input type="number" id="ajusteCantidad" placeholder="0" inputmode="decimal">
+    <label>Motivo (opcional)</label>
+    <input type="text" id="ajusteMotivo" placeholder="Ej: se echó a perder, faltó contar...">
+    <button class="btn btn-chili" id="guardarAjusteBtn" style="margin-top:6px;">Guardar ajuste</button>
   </div>
 </div>
 
