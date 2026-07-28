@@ -2,6 +2,7 @@ let productos = [];
 let ventas = [];
 let compras = [];
 let ajustes = [];
+let insumos = [];
 let carrito = {}; // {productoId: cantidad}
 let editingProdId = null;
 
@@ -63,6 +64,7 @@ function startListener(){
     ventas = d.ventas || [];
     compras = d.compras || [];
     ajustes = d.ajustes || [];
+    insumos = d.insumos || [];
 
     if(!seeded && (productos.length === 0 || d.menu_version !== MENU_VERSION)){
       seeded = true;
@@ -91,6 +93,7 @@ function startListener(){
 async function saveProductos(){ await docRef.set({productos}, {merge:true}); }
 async function saveVentas(){ await docRef.set({ventas}, {merge:true}); }
 async function saveCompras(){ await docRef.set({compras}, {merge:true}); }
+async function saveInsumos(){ await docRef.set({insumos}, {merge:true}); }
 
 let catState = {};
 
@@ -98,15 +101,27 @@ function renderAll(){
   renderProdGrid();
   renderCart();
   renderInventario();
+  renderInsumos();
   renderCompras();
   renderResumen();
   renderCatList();
+  renderInsumoSelect();
 }
 
 function renderCatList(){
   const cats = [...new Set(productos.map(p=>p.categoria || 'Otros'))];
   document.getElementById('catList').innerHTML = cats.map(c=>`<option value="${escapeHtml(c)}">`).join('');
 }
+
+// ---------- INSUMOS (categorías fijas para mantener orden) ----------
+const INSUMO_CATEGORIAS = ['Frutas y verduras', 'Salsas y condimentos', 'Abarrotes y empaquetados', 'Desechables y bebidas'];
+const INSUMO_CAT_STYLE = {
+  'Frutas y verduras':          {bg:'var(--green)', fg:'#fff', emoji:'🥬'},
+  'Salsas y condimentos':       {bg:'var(--chili)', fg:'#fff', emoji:'🌶️'},
+  'Abarrotes y empaquetados':   {bg:'var(--corn)', fg:'var(--charcoal)', emoji:'📦'},
+  'Desechables y bebidas':      {bg:'var(--blue)', fg:'#fff', emoji:'🥤'}
+};
+const UNIDAD_LABEL = {pieza:'piezas', g:'gramos', ml:'mililitros'};
 
 // ---------- VENDER ----------
 const CAT_STYLE = {
@@ -237,14 +252,19 @@ function renderCart(){
   if(cartDetailOpen) detail.style.display='block';
 }
 
-// ---------- INSUMOS / RECETAS (pendiente) ----------
-// Cuando ya tengan definidos los insumos (mayonesa, queso, salsa, etc. con su unidad
-// y cantidad) y la receta de cada producto (ej: Elote entero = 15ml mayonesa + 10g queso),
-// esta función descontará esos insumos del inventario cada vez que se cobre una venta.
-// Por ahora no hace nada; el gancho ya está puesto en cobrarVenta() más abajo.
+// ---------- INSUMOS / RECETAS ----------
+// Descuenta del inventario de insumos lo que marque la receta de cada producto vendido.
+// Si un producto todavía no tiene receta definida (receta:[] vacío), simplemente no descuenta nada más.
 function descontarInsumosPorVenta(items){
-  // TODO: cuando exista el inventario de insumos, recorrer items -> producto.receta
-  // y restar cada insumo de su stock correspondiente.
+  items.forEach(item=>{
+    const p = productos.find(x=>x.id===item.productoId);
+    if(!p || !p.receta || p.receta.length===0) return;
+    p.receta.forEach(r=>{
+      const ins = insumos.find(x=>x.id===r.insumoId);
+      if(!ins) return;
+      ins.stock -= (r.cantidad * item.cantidad);
+    });
+  });
 }
 
 async function cobrarVenta(){
@@ -259,10 +279,10 @@ async function cobrarVenta(){
     return {productoId:id, nombre:p.nombre, cantidad:carrito[id], precioUnit:p.precio};
   });
   ventas.push({id:uid(), fecha:todayStr(), ts:Date.now(), items, total});
-  descontarInsumosPorVenta(items); // no hace nada todavía, listo para cuando existan las recetas
+  descontarInsumosPorVenta(items); // descuenta insumos según receta, si ya está definida
   carrito = {};
   catState = {}; // cierra todas las categorías otra vez
-  await docRef.set({productos, ventas}, {merge:true}); // se guarda todo junto para que no se pisen los datos
+  await docRef.set({productos, ventas, insumos}, {merge:true}); // todo junto para que no se pisen los datos
   renderAll();
   showToast('Venta registrada: ' + fmt(total));
 }
@@ -278,7 +298,7 @@ function renderInventario(){
     <div class="list-row">
       <div class="list-main">
         <div class="list-title">${escapeHtml(p.nombre)}</div>
-        <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)}</div>
+        <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)} · ${(p.receta&&p.receta.length)?p.receta.length+' insumo(s)':'sin receta'}</div>
       </div>
       <div class="pill ${p.stock<=3?'low':''}" style="${p.stock<=3?'background:#FBEAE1;color:#D6482B;':''}">Stock: ${p.stock}</div>
       <div style="display:flex; flex-direction:column; gap:6px;">
@@ -290,6 +310,8 @@ function renderInventario(){
   renderAjustes();
 }
 
+let recetaTemp = [];
+
 function openNewProd(){
   editingProdId = null;
   document.getElementById('modalTitle').textContent = 'Nuevo producto';
@@ -299,6 +321,8 @@ function openNewProd(){
   document.getElementById('pCosto').value='';
   document.getElementById('pStock').value='';
   document.getElementById('delProdBtn').style.display='none';
+  recetaTemp = [];
+  renderRecetaEditor();
   document.getElementById('modalBg').classList.add('show');
 }
 
@@ -313,7 +337,47 @@ function openEditProd(id){
   document.getElementById('pCosto').value=p.costo;
   document.getElementById('pStock').value=p.stock;
   document.getElementById('delProdBtn').style.display='inline-block';
+  recetaTemp = JSON.parse(JSON.stringify(p.receta || []));
+  renderRecetaEditor();
   document.getElementById('modalBg').classList.add('show');
+}
+
+function renderRecetaEditor(){
+  const list = document.getElementById('recetaList');
+  if(!list) return;
+  if(recetaTemp.length === 0){
+    list.innerHTML = '<div class="empty" style="padding:8px 0;">Sin ingredientes agregados todavía</div>';
+    return;
+  }
+  list.innerHTML = recetaTemp.map((r,idx)=>{
+    const ins = insumos.find(x=>x.id===r.insumoId);
+    const nombre = ins ? ins.nombre : '(insumo eliminado)';
+    const unidad = ins ? (UNIDAD_LABEL[ins.unidad]||ins.unidad) : '';
+    return `<div class="cart-row">
+      <div class="list-title">${escapeHtml(nombre)}</div>
+      <div class="qty-ctrl">
+        <span>${r.cantidad} ${unidad}</span>
+        <button onclick="quitarIngrediente(${idx})">×</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function agregarIngrediente(){
+  const sel = document.getElementById('recetaInsumoSelect');
+  const cant = parseFloat(document.getElementById('recetaCantidad').value);
+  if(!sel.value){ showToast('Elige un insumo'); return; }
+  if(!cant || cant<=0){ showToast('Pon una cantidad'); return; }
+  const existente = recetaTemp.find(r=>r.insumoId===sel.value);
+  if(existente){ existente.cantidad = cant; }
+  else { recetaTemp.push({insumoId: sel.value, cantidad: cant}); }
+  document.getElementById('recetaCantidad').value = '';
+  renderRecetaEditor();
+}
+
+function quitarIngrediente(idx){
+  recetaTemp.splice(idx,1);
+  renderRecetaEditor();
 }
 
 async function saveProd(){
@@ -325,10 +389,9 @@ async function saveProd(){
   if(!nombre){ showToast('Ponle un nombre'); return; }
   if(editingProdId){
     const p = productos.find(x=>x.id===editingProdId);
-    Object.assign(p, {nombre, categoria, precio, costo, stock});
+    Object.assign(p, {nombre, categoria, precio, costo, stock, receta: recetaTemp});
   }else{
-    // "receta": [] queda listo para cuando se agreguen los insumos que descuenta cada producto al venderse
-    productos.push({id:uid(), nombre, categoria, precio, costo, stock, receta:[]});
+    productos.push({id:uid(), nombre, categoria, precio, costo, stock, receta: recetaTemp});
   }
   await saveProductos();
   document.getElementById('modalBg').classList.remove('show');
@@ -345,13 +408,15 @@ async function delProd(){
   showToast('Producto eliminado');
 }
 
-// ---------- AJUSTES / MERMA ----------
-let ajustandoProdId = null;
+// ---------- AJUSTES / MERMA (funciona para productos e insumos) ----------
+let ajustandoId = null;
+let ajustandoTipoArticulo = 'producto'; // 'producto' o 'insumo'
 
 function openAjuste(id){
   const p = productos.find(x=>x.id===id);
   if(!p) return;
-  ajustandoProdId = id;
+  ajustandoId = id;
+  ajustandoTipoArticulo = 'producto';
   document.getElementById('ajusteProdNombre').textContent = p.nombre;
   document.getElementById('ajusteTipo').value = 'perdida';
   document.getElementById('ajusteCantidad').value = '';
@@ -359,24 +424,42 @@ function openAjuste(id){
   document.getElementById('ajusteModalBg').classList.add('show');
 }
 
+function openAjusteInsumo(id){
+  const ins = insumos.find(x=>x.id===id);
+  if(!ins) return;
+  ajustandoId = id;
+  ajustandoTipoArticulo = 'insumo';
+  document.getElementById('ajusteProdNombre').textContent = ins.nombre + ' (' + (UNIDAD_LABEL[ins.unidad]||ins.unidad) + ')';
+  document.getElementById('ajusteTipo').value = 'perdida';
+  document.getElementById('ajusteCantidad').value = '';
+  document.getElementById('ajusteMotivo').value = '';
+  document.getElementById('ajusteModalBg').classList.add('show');
+}
+
 async function guardarAjuste(){
-  const p = productos.find(x=>x.id===ajustandoProdId);
-  if(!p) return;
+  const esInsumo = ajustandoTipoArticulo === 'insumo';
+  const item = esInsumo ? insumos.find(x=>x.id===ajustandoId) : productos.find(x=>x.id===ajustandoId);
+  if(!item) return;
   const tipo = document.getElementById('ajusteTipo').value; // 'perdida' o 'ganancia'
   const cantidad = parseFloat(document.getElementById('ajusteCantidad').value) || 0;
   const motivo = document.getElementById('ajusteMotivo').value.trim();
   if(cantidad <= 0){ showToast('Pon una cantidad mayor a 0'); return; }
 
   const delta = tipo === 'perdida' ? -cantidad : cantidad;
-  p.stock += delta;
+  item.stock += delta;
 
   ajustes.push({
     id: uid(), fecha: todayStr(), ts: Date.now(),
-    productoId: p.id, productoNombre: p.nombre,
+    tipoArticulo: ajustandoTipoArticulo,
+    productoId: item.id, productoNombre: item.nombre,
     tipo, cantidad, motivo
   });
 
-  await docRef.set({productos, ajustes}, {merge:true});
+  if(esInsumo){
+    await docRef.set({insumos, ajustes}, {merge:true});
+  }else{
+    await docRef.set({productos, ajustes}, {merge:true});
+  }
   document.getElementById('ajusteModalBg').classList.remove('show');
   renderAll();
   showToast(tipo === 'perdida' ? 'Merma registrada' : 'Ajuste registrado');
@@ -398,33 +481,191 @@ function renderAjustes(){
   `).join('');
 }
 
-// ---------- COMPRAS ----------
+// ---------- INSUMOS (catálogo, agrupado por categoría fija) ----------
+let editingInsumoId = null;
+let insumoCatOpenState = {};
+
+function renderInsumos(){
+  const wrap = document.getElementById('insumoWrap');
+  if(!wrap) return;
+  if(insumos.length === 0){
+    wrap.innerHTML = '<div class="empty">Aún no tienes insumos. Agrega el primero con "+ Agregar insumo".</div>';
+    return;
+  }
+  const grupos = {};
+  insumos.forEach(i=>{
+    const cat = i.categoria || 'Otros';
+    if(!grupos[cat]) grupos[cat] = [];
+    grupos[cat].push(i);
+  });
+  const orden = INSUMO_CATEGORIAS.filter(c=>grupos[c]);
+  Object.keys(grupos).forEach(c=>{ if(!orden.includes(c)) orden.push(c); });
+
+  wrap.innerHTML = orden.map(cat=>{
+    const abierto = insumoCatOpenState[cat] === true;
+    const st = INSUMO_CAT_STYLE[cat] || {bg:'var(--muted)', fg:'#fff', emoji:'📦'};
+    const filas = grupos[cat].map(i=>`
+      <div class="list-row">
+        <div class="list-main">
+          <div class="list-title">${escapeHtml(i.nombre)}</div>
+          <div class="list-sub">${i.stock} ${UNIDAD_LABEL[i.unidad]||i.unidad}</div>
+        </div>
+        <div class="pill ${i.stock<=0?'low':''}" style="${i.stock<=0?'background:#FBEAE1;color:#D6482B;':''}">${i.stock<=0?'Agotado':'Disponible'}</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="openEditInsumo('${i.id}')">Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="openAjusteInsumo('${i.id}')">Ajustar</button>
+        </div>
+      </div>
+    `).join('');
+    return `
+      <button class="cat-card" style="background:${st.bg}; color:${st.fg};" onclick="toggleInsumoCat('${escapeHtml(cat).replace(/'/g,"\\'")}')">
+        <div class="cat-left">
+          <span class="cat-emoji">${st.emoji}</span>
+          <div>
+            <div class="cat-name">${escapeHtml(cat)}</div>
+            <div class="cat-count">${grupos[cat].length} insumo${grupos[cat].length===1?'':'s'}</div>
+          </div>
+        </div>
+        <span class="cat-chevron-big">${abierto ? '▾' : '▸'}</span>
+      </button>
+      <div class="cat-body" ${abierto ? '' : 'style="display:none;"'}>${filas}</div>
+    `;
+  }).join('');
+}
+
+function toggleInsumoCat(cat){
+  const estabaAbierta = insumoCatOpenState[cat] === true;
+  insumoCatOpenState = {};
+  if(!estabaAbierta) insumoCatOpenState[cat] = true;
+  renderInsumos();
+}
+
+function openNewInsumo(){
+  editingInsumoId = null;
+  document.getElementById('insumoModalTitle').textContent = 'Nuevo insumo';
+  document.getElementById('iNombre').value = '';
+  document.getElementById('iCategoria').value = INSUMO_CATEGORIAS[0];
+  document.getElementById('iUnidad').value = 'pieza';
+  document.getElementById('iStock').value = '';
+  document.getElementById('delInsumoBtn').style.display = 'none';
+  document.getElementById('insumoModalBg').classList.add('show');
+}
+
+function openEditInsumo(id){
+  const i = insumos.find(x=>x.id===id);
+  if(!i) return;
+  editingInsumoId = id;
+  document.getElementById('insumoModalTitle').textContent = 'Editar insumo';
+  document.getElementById('iNombre').value = i.nombre;
+  document.getElementById('iCategoria').value = i.categoria;
+  document.getElementById('iUnidad').value = i.unidad;
+  document.getElementById('iStock').value = i.stock;
+  document.getElementById('delInsumoBtn').style.display = 'inline-block';
+  document.getElementById('insumoModalBg').classList.add('show');
+}
+
+async function saveInsumo(){
+  const nombre = document.getElementById('iNombre').value.trim();
+  const categoria = document.getElementById('iCategoria').value;
+  const unidad = document.getElementById('iUnidad').value;
+  const stock = parseFloat(document.getElementById('iStock').value) || 0;
+  if(!nombre){ showToast('Ponle un nombre'); return; }
+  if(editingInsumoId){
+    const i = insumos.find(x=>x.id===editingInsumoId);
+    Object.assign(i, {nombre, categoria, unidad, stock});
+  }else{
+    insumos.push({id:uid(), nombre, categoria, unidad, stock});
+  }
+  await saveInsumos();
+  document.getElementById('insumoModalBg').classList.remove('show');
+  renderAll();
+  showToast('Insumo guardado');
+}
+
+async function delInsumo(){
+  if(!editingInsumoId) return;
+  insumos = insumos.filter(x=>x.id!==editingInsumoId);
+  await saveInsumos();
+  document.getElementById('insumoModalBg').classList.remove('show');
+  renderAll();
+  showToast('Insumo eliminado');
+}
+
+function renderInsumoSelect(){
+  const options = insumos.map(i=>`<option value="${i.id}">${escapeHtml(i.nombre)} (${UNIDAD_LABEL[i.unidad]||i.unidad})</option>`).join('');
+  const sinInsumos = '<option value="">Agrega insumos en Inventario → Insumos</option>';
+
+  const compraSel = document.getElementById('compraInsumoSelect');
+  if(compraSel){
+    compraSel.innerHTML = insumos.length ? options : sinInsumos;
+    actualizarUnidadCompra();
+  }
+  const recetaSel = document.getElementById('recetaInsumoSelect');
+  if(recetaSel){
+    recetaSel.innerHTML = insumos.length ? options : sinInsumos;
+  }
+}
+
+function actualizarUnidadCompra(){
+  const sel = document.getElementById('compraInsumoSelect');
+  const lbl = document.getElementById('compraUnidadLbl');
+  if(!sel || !lbl) return;
+  const ins = insumos.find(x=>x.id===sel.value);
+  lbl.textContent = ins ? `Cantidad comprada (${UNIDAD_LABEL[ins.unidad]||ins.unidad})` : 'Cantidad comprada';
+}
+
+// Tabs Menú / Insumos dentro de Inventario
+function switchInvTab(tab){
+  const btnMenu = document.getElementById('invTabMenu');
+  const btnIns = document.getElementById('invTabInsumos');
+  if(tab === 'menu'){
+    btnMenu.classList.add('btn-chili'); btnMenu.classList.remove('btn-ghost');
+    btnIns.classList.add('btn-ghost'); btnIns.classList.remove('btn-chili');
+  }else{
+    btnIns.classList.add('btn-chili'); btnIns.classList.remove('btn-ghost');
+    btnMenu.classList.add('btn-ghost'); btnMenu.classList.remove('btn-chili');
+  }
+  document.getElementById('invPanelMenu').style.display = tab==='menu' ? 'block' : 'none';
+  document.getElementById('invPanelInsumos').style.display = tab==='insumos' ? 'block' : 'none';
+}
+
+// ---------- COMPRAS (ahora sobre insumos: aumenta su stock según su unidad) ----------
 async function addCompra(){
-  const desc = document.getElementById('compraDesc').value.trim();
-  const monto = parseFloat(document.getElementById('compraMonto').value)||0;
-  if(!desc || monto<=0){ showToast('Falta descripción o monto'); return; }
-  compras.push({id:uid(), fecha:todayStr(), ts:Date.now(), desc, monto});
-  await saveCompras();
-  document.getElementById('compraDesc').value='';
+  const insumoId = document.getElementById('compraInsumoSelect').value;
+  const cantidad = parseFloat(document.getElementById('compraCantidad').value) || 0;
+  const monto = parseFloat(document.getElementById('compraMonto').value) || 0;
+  const ins = insumos.find(x=>x.id===insumoId);
+  if(!ins){ showToast('Elige un insumo (agrégalo primero en Inventario → Insumos)'); return; }
+  if(cantidad<=0 || monto<=0){ showToast('Falta la cantidad o el monto'); return; }
+
+  ins.stock += cantidad;
+  compras.push({
+    id:uid(), fecha:todayStr(), ts:Date.now(),
+    insumoId: ins.id, insumoNombre: ins.nombre, unidad: ins.unidad,
+    cantidad, monto
+  });
+  await docRef.set({insumos, compras}, {merge:true});
+  document.getElementById('compraCantidad').value='';
   document.getElementById('compraMonto').value='';
   renderAll();
-  showToast('Gasto guardado');
+  showToast('Compra guardada');
 }
 
 function renderCompras(){
   const list = document.getElementById('compraList');
-  if(compras.length === 0){ list.innerHTML = '<div class="empty">Sin gastos registrados todavía.</div>'; return; }
+  if(compras.length === 0){ list.innerHTML = '<div class="empty">Sin compras registradas todavía.</div>'; return; }
   const sorted = [...compras].sort((a,b)=>b.ts-a.ts).slice(0,30);
   list.innerHTML = sorted.map(c=>`
     <div class="list-row">
       <div class="list-main">
-        <div class="list-title">${escapeHtml(c.desc)}</div>
+        <div class="list-title">${escapeHtml(c.insumoNombre || c.desc || '')}${c.cantidad?' · '+c.cantidad+' '+(UNIDAD_LABEL[c.unidad]||c.unidad||''):''}</div>
         <div class="list-sub">${c.fecha}</div>
       </div>
       <div class="pill">${fmt(c.monto)}</div>
     </div>
   `).join('');
 }
+
 
 // ---------- RESUMEN ----------
 function renderResumen(){
@@ -438,6 +679,32 @@ function renderResumen(){
   document.getElementById('statVentasTotal').textContent = fmt(ventasTotal);
   document.getElementById('statGastosTotal').textContent = fmt(gastosTotal);
   document.getElementById('statGanancia').textContent = fmt(ventasTotal - gastosTotal);
+
+  // Mermas de hoy y totales (solo cuenta de ajustes tipo "perdida")
+  const mermasHoy = ajustes.filter(a=>a.tipo==='perdida' && a.fecha===hoy).length;
+  const mermasTotal = ajustes.filter(a=>a.tipo==='perdida').length;
+  const elMermaHoy = document.getElementById('statMermaHoy');
+  const elMermaTotal = document.getElementById('statMermaTotal');
+  if(elMermaHoy) elMermaHoy.textContent = mermasHoy;
+  if(elMermaTotal) elMermaTotal.textContent = mermasTotal;
+
+  const mermaList = document.getElementById('mermaList');
+  if(mermaList){
+    const mermas = [...ajustes].filter(a=>a.tipo==='perdida').sort((a,b)=>b.ts-a.ts).slice(0,10);
+    if(mermas.length === 0){
+      mermaList.innerHTML = '<div class="empty">Sin mermas registradas todavía.</div>';
+    }else{
+      mermaList.innerHTML = mermas.map(a=>`
+        <div class="list-row">
+          <div class="list-main">
+            <div class="list-title">${escapeHtml(a.productoNombre)}${a.motivo ? ' · '+escapeHtml(a.motivo) : ''}</div>
+            <div class="list-sub">${a.fecha} · ${a.tipoArticulo === 'insumo' ? 'Insumo' : 'Producto'}</div>
+          </div>
+          <div class="pill" style="background:#FBEAE1;color:#D6482B;">−${a.cantidad}</div>
+        </div>
+      `).join('');
+    }
+  }
 
   const list = document.getElementById('ventasList');
   if(ventas.length===0){ list.innerHTML='<div class="empty">Aún no hay ventas.</div>'; return; }
@@ -475,6 +742,15 @@ document.getElementById('closeModal').addEventListener('click', ()=>document.get
 document.getElementById('addCompraBtn').addEventListener('click', addCompra);
 document.getElementById('guardarAjusteBtn').addEventListener('click', guardarAjuste);
 document.getElementById('closeAjusteModal').addEventListener('click', ()=>document.getElementById('ajusteModalBg').classList.remove('show'));
+
+document.getElementById('invTabMenu').addEventListener('click', ()=>switchInvTab('menu'));
+document.getElementById('invTabInsumos').addEventListener('click', ()=>switchInvTab('insumos'));
+document.getElementById('addInsumoBtn').addEventListener('click', openNewInsumo);
+document.getElementById('saveInsumoBtn').addEventListener('click', saveInsumo);
+document.getElementById('delInsumoBtn').addEventListener('click', delInsumo);
+document.getElementById('closeInsumoModal').addEventListener('click', ()=>document.getElementById('insumoModalBg').classList.remove('show'));
+document.getElementById('compraInsumoSelect').addEventListener('change', actualizarUnidadCompra);
+document.getElementById('agregarIngredienteBtn').addEventListener('click', agregarIngrediente);
 
 document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
 
