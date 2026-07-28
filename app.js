@@ -109,7 +109,15 @@ function renderCatList(){
 // ---------- VENDER ----------
 const CAT_STYLE = {
   'Elotes':  {bg:'var(--corn)', fg:'var(--charcoal)', emoji:'🌽'},
-  'Botanas': {bg:'var(--chili)', fg:'#fff', emoji:'🌮'},
+  'Botanas': {bg:'var(--chili)', fg:'#fff', emoji:`<svg viewBox="0 0 48 48" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M13 17 L16 40 Q16 42 18 42 H30 Q32 42 32 40 L35 17 Z" fill="#FFF6DC" stroke="#fff" stroke-width="2"/>
+      <ellipse cx="24" cy="17" rx="11" ry="3" fill="#FFF6DC" stroke="#fff" stroke-width="2"/>
+      <path d="M18 17 L14 5 L22 13 Z" fill="#F2B705" stroke="#fff" stroke-width="1.3"/>
+      <path d="M27 17 L31 4 L34 14 Z" fill="#F2B705" stroke="#fff" stroke-width="1.3"/>
+      <path d="M22 17 L24 7 L28 15 Z" fill="#F2B705" stroke="#fff" stroke-width="1.3"/>
+      <path d="M17 22 Q24 27 31 22" stroke="#7A1F0E" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M18 29 Q24 33 30 29" stroke="#7A1F0E" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </svg>`},
   'Bebidas': {bg:'var(--blue)', fg:'#fff', emoji:'🥤'},
   'Extras':  {bg:'var(--green)', fg:'#fff', emoji:'➕'}
 };
