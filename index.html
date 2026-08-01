@@ -6,7 +6,7 @@
 <title>El Reventón del Sabor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="estilos.css?v=7">
+<link rel="stylesheet" href="estilos.css?v=8">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
@@ -55,6 +55,7 @@
           <h2 style="margin:0;">Productos del menú</h2>
           <button class="btn btn-green btn-sm" id="addProdBtn">+ Agregar</button>
         </div>
+        <input type="search" id="menuBuscar" placeholder="🔍 Buscar producto..." oninput="setFiltroMenu(this.value)">
         <div id="invList"></div>
       </div>
       <div class="card">
@@ -69,6 +70,7 @@
           <h2 style="margin:0;">Insumos</h2>
           <button class="btn btn-green btn-sm" id="addInsumoBtn">+ Agregar insumo</button>
         </div>
+        <input type="search" id="insumoBuscar" placeholder="🔍 Buscar insumo..." oninput="setFiltroInsumos(this.value)">
         <div id="insumoWrap"></div>
       </div>
     </div>
@@ -79,6 +81,7 @@
     <div class="card">
       <h2>Registrar compra de insumo</h2>
       <label>¿Qué insumo compraste?</label>
+      <input type="search" id="compraBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoCompra()">
       <select id="compraInsumoSelect"></select>
       <label id="compraUnidadLbl">Cantidad comprada</label>
       <input type="number" id="compraCantidad" placeholder="0" inputmode="decimal">
@@ -165,6 +168,7 @@
 
     <label>Receta (insumos que lleva este producto)</label>
     <div id="recetaList" style="margin-bottom:10px;"></div>
+    <input type="search" id="recetaBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoReceta()">
     <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px;">
       <div style="flex:1;">
         <select id="recetaInsumoSelect" style="margin-bottom:0;"></select>
@@ -173,6 +177,23 @@
         <input type="number" id="recetaCantidad" placeholder="Cant." inputmode="decimal" style="margin-bottom:0;">
       </div>
       <button class="btn btn-green btn-sm" id="agregarIngredienteBtn" type="button">+</button>
+    </div>
+
+    <label>Variantes (opcional)</label>
+    <div class="list-sub" style="margin-bottom:6px;">
+      Sirve para vender el mismo producto con distintas botanas sin crear uno por cada una.
+      Elige qué insumo cambia y luego agrega las alternativas.
+    </div>
+    <select id="varBaseSelect" onchange="cambiarVarBase()"></select>
+    <div id="varOpcionesBox" style="display:none;">
+      <div id="varOpcionesList" style="margin-bottom:10px;"></div>
+      <input type="search" id="varOpcionBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoVariante()">
+      <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px;">
+        <div style="flex:1;">
+          <select id="varOpcionSelect" style="margin-bottom:0;"></select>
+        </div>
+        <button class="btn btn-green btn-sm" id="agregarOpcionVarBtn" type="button">+</button>
+      </div>
     </div>
 
     <button class="btn btn-green" id="saveProdBtn" style="margin-top:6px;">Guardar</button>
@@ -195,6 +216,16 @@
     <label>Motivo (opcional)</label>
     <input type="text" id="ajusteMotivo" placeholder="Ej: se echó a perder, faltó contar...">
     <button class="btn btn-chili" id="guardarAjusteBtn" style="margin-top:6px;">Guardar ajuste</button>
+  </div>
+</div>
+
+<!-- Modal para elegir variante al vender (ej. con qué botana) -->
+<div class="modal-bg" id="varianteModalBg">
+  <div class="modal">
+    <button class="close-x" id="closeVarianteModal">×</button>
+    <h3 id="varianteTitulo"></h3>
+    <div class="list-sub" style="margin-bottom:12px;">¿Con cuál lo preparas?</div>
+    <div id="varianteOpciones"></div>
   </div>
 </div>
 
@@ -225,9 +256,9 @@
   </div>
 </div>
 
-<!-- El ?v=7 obliga al navegador a bajar la versión nueva en vez de usar la guardada
+<!-- El ?v=8 obliga al navegador a bajar la versión nueva en vez de usar la guardada
      en caché. IMPORTANTE: cada vez que cambies app.js o estilos.css, sube el número
      (v=7, v=8, ...) aquí y en la línea del estilos.css de arriba. -->
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

@@ -50,8 +50,30 @@ seguirán usando la versión vieja guardada y la app se romperá de formas raras
 - Se cierran todas al terminar una venta.
 - Barra fija abajo, **siempre visible**, con número de productos y total.
   Al tocarla se despliega el detalle con botones + / − y el botón Cobrar.
-- Al cobrar: se descuenta el producto y, si tiene receta, **también sus insumos**
+- Al cobrar: si el producto tiene receta, **se descuentan sus insumos**
   (esto ocurre sin mostrarse en pantalla).
+
+### Variantes
+Un producto puede venderse con distintas botanas sin duplicarlo en el menú.
+Se configura en Inventario → Menú → Editar → **Variantes**: se elige qué insumo
+de la receta cambia (ej. Tostitos verdes) y se agregan las alternativas
+(Doritos, Cheetos, Takis...).
+
+Al vender, la app pregunta cuál se usó y descuenta **esa** botana, no la original.
+En el ticket queda como "Tostilocos (Doritos Flamin Hot)".
+
+### Buscadores
+Hay búsqueda por nombre en: lista del menú, lista de insumos, selector de insumo
+en Compras, y los dos selectores dentro del editor de producto (receta y variantes).
+
+## Regla importante: el código NO administra el catálogo
+
+El menú y los insumos escritos en `app.js` son **solo la carga inicial**: se usan
+una única vez, cuando la base de datos está completamente vacía. A partir de ahí
+el catálogo lo administran las dueñas desde la app y **el código nunca lo sobrescribe**.
+
+Antes existía una `DATOS_VERSION` que al subirla reemplazaba todo el catálogo. Se
+eliminó porque habría borrado el trabajo de las dueñas.
 
 ### Inventario
 Dos pestañas:

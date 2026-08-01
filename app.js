@@ -195,9 +195,9 @@ const MENU_INICIAL = [
   {id:'prod_queso_extra', nombre:'Queso extra', categoria:'Extras', precio:10, costo:0, receta:[R('ins_queso_nachos',30)]}
 ];
 
-// Al subir este número, la app vuelve a cargar el menú y los insumos de arriba.
-// OJO: sobrescribe precios y recetas editados a mano en la app.
-const DATOS_VERSION = '6';
+// El menú y los insumos de arriba son SOLO la carga inicial: se usan una única vez,
+// cuando la base de datos está totalmente vacía. A partir de ahí el catálogo lo
+// administran las dueñas desde la app y el código ya NO lo vuelve a tocar nunca.
 let seeded = false;
 
 function startListener(){
@@ -209,16 +209,12 @@ function startListener(){
     ajustes = d.ajustes || [];
     insumos = d.insumos || [];
 
-    if(!seeded && d.datos_version !== DATOS_VERSION){
+    // Carga inicial únicamente si no hay absolutamente nada guardado
+    if(!seeded && productos.length === 0 && insumos.length === 0){
       seeded = true;
       productos = JSON.parse(JSON.stringify(MENU_INICIAL));
-      // Los insumos que ya existan conservan su existencia actual; solo se agregan los nuevos
-      const previos = {};
-      insumos.forEach(i => previos[i.id] = i.stock);
-      insumos = JSON.parse(JSON.stringify(INSUMOS_INICIAL)).map(i=>(
-        previos[i.id] !== undefined ? {...i, stock: previos[i.id]} : i
-      ));
-      await docRef.set({productos, insumos, datos_version: DATOS_VERSION}, {merge:true});
+      insumos = JSON.parse(JSON.stringify(INSUMOS_INICIAL));
+      await docRef.set({productos, insumos}, {merge:true});
       return; // esto vuelve a disparar el snapshot con los datos ya guardados
     }
     renderAll();
@@ -309,7 +305,8 @@ function renderProdGrid(){
       <button class="prod-btn" onclick="addToCart('${p.id}')">
         <div class="prod-name">${escapeHtml(p.nombre)}</div>
         <div class="prod-price">${fmt(p.precio)}</div>
-        ${p.precio<=0?'<div class="prod-stock low">Falta poner precio</div>':''}
+        ${p.precio<=0?'<div class="prod-stock low">Falta poner precio</div>':
+          (tieneVariantes(p)?'<div class="prod-stock">Elige opción ▸</div>':'')}
       </button>
     `).join('');
     return `
@@ -330,18 +327,36 @@ function renderProdGrid(){
   }).join('');
 }
 
-function addToCart(id){
+// El carrito guarda { clave: {productoId, varianteId, cantidad} }.
+// La clave incluye la variante para que un Tostiloco de Doritos y uno de Cheetos
+// se cuenten como renglones distintos.
+const claveCarrito = (productoId, varianteId) => productoId + '|' + (varianteId || '');
+
+function addToCart(id, varianteId){
   const p = productos.find(x=>x.id===id);
   if(!p) return;
-  carrito[id] = (carrito[id]||0) + 1;
+  // Si el producto tiene variantes y todavía no eligieron cuál, se pregunta primero
+  if(tieneVariantes(p) && !varianteId){ abrirSelectorVariante(p); return; }
+
+  const k = claveCarrito(id, varianteId);
+  if(carrito[k]) carrito[k].cantidad += 1;
+  else carrito[k] = {productoId:id, varianteId: varianteId || null, cantidad:1};
   renderCart();
 }
 
-function changeCartQty(id, delta){
-  let q = (carrito[id]||0) + delta;
-  if(q <= 0){ delete carrito[id]; }
-  else { carrito[id] = q; }
+function changeCartQty(clave, delta){
+  const item = carrito[clave];
+  if(!item) return;
+  item.cantidad += delta;
+  if(item.cantidad <= 0) delete carrito[clave];
   renderCart();
+}
+
+// Nombre a mostrar: "Tostilocos (Doritos Flamin Hot)"
+function nombreConVariante(p, varianteId){
+  if(!varianteId) return p.nombre;
+  const ins = insumos.find(x=>x.id===varianteId);
+  return p.nombre + (ins ? ' (' + ins.nombre + ')' : '');
 }
 
 let cartDetailOpen = false;
@@ -352,12 +367,12 @@ function toggleCartDetail(){
 }
 
 function renderCart(){
-  const ids = Object.keys(carrito);
+  const claves = Object.keys(carrito);
   const bar = document.getElementById('cartBar');
   const detail = document.getElementById('cartDetail');
   const list = document.getElementById('cartList');
 
-  if(ids.length === 0){
+  if(claves.length === 0){
     bar.style.display='none';
     detail.style.display='none';
     cartDetailOpen = false;
@@ -367,18 +382,18 @@ function renderCart(){
 
   let total = 0;
   let totalPiezas = 0;
-  list.innerHTML = ids.map(id=>{
-    const p = productos.find(x=>x.id===id);
+  list.innerHTML = claves.map(k=>{
+    const it = carrito[k];
+    const p = productos.find(x=>x.id===it.productoId);
     if(!p) return '';
-    const sub = p.precio * carrito[id];
-    total += sub;
-    totalPiezas += carrito[id];
+    total += p.precio * it.cantidad;
+    totalPiezas += it.cantidad;
     return `<div class="cart-row">
-      <div><div class="list-title">${escapeHtml(p.nombre)}</div><div class="list-sub">${fmt(p.precio)} c/u</div></div>
+      <div><div class="list-title">${escapeHtml(nombreConVariante(p, it.varianteId))}</div><div class="list-sub">${fmt(p.precio)} c/u</div></div>
       <div class="qty-ctrl">
-        <button onclick="changeCartQty('${id}',-1)">−</button>
-        <span>${carrito[id]}</span>
-        <button onclick="changeCartQty('${id}',1)">+</button>
+        <button onclick="changeCartQty('${k}',-1)">−</button>
+        <span>${it.cantidad}</span>
+        <button onclick="changeCartQty('${k}',1)">+</button>
       </div>
     </div>`;
   }).join('');
@@ -388,30 +403,74 @@ function renderCart(){
   if(cartDetailOpen) detail.style.display='block';
 }
 
+// ---------- VARIANTES ----------
+// Un producto con variantes tiene:
+//   variantes: { insumoBase:'ins_tostitos', opciones:['ins_tostitos','ins_doritos_hot', ...] }
+// Al venderlo se descuenta la receta normal, pero cambiando insumoBase por la opción elegida.
+function tieneVariantes(p){
+  return !!(p.variantes && p.variantes.insumoBase && (p.variantes.opciones||[]).length > 0);
+}
+
+function abrirSelectorVariante(p){
+  const cont = document.getElementById('varianteOpciones');
+  document.getElementById('varianteTitulo').textContent = p.nombre;
+  cont.innerHTML = p.variantes.opciones.map(insId=>{
+    const ins = insumos.find(x=>x.id===insId);
+    if(!ins) return '';
+    const agotado = ins.stock <= 0;
+    return `<button class="prod-btn" style="width:100%; margin-bottom:8px; ${agotado?'opacity:0.5;':''}"
+              onclick="elegirVariante('${p.id}','${insId}')">
+        <div class="prod-name">${escapeHtml(ins.nombre)}</div>
+        <div class="prod-stock ${agotado?'low':''}">${agotado?'Sin existencia':'Quedan '+ins.stock+' '+(UNIDAD_LABEL[ins.unidad]||ins.unidad)}</div>
+      </button>`;
+  }).join('');
+  document.getElementById('varianteModalBg').classList.add('show');
+}
+
+function elegirVariante(productoId, insumoId){
+  document.getElementById('varianteModalBg').classList.remove('show');
+  addToCart(productoId, insumoId);
+}
+
+// Devuelve la receta ya con la variante aplicada
+function recetaEfectiva(p, varianteId){
+  const receta = p.receta || [];
+  if(!varianteId || !tieneVariantes(p)) return receta;
+  return receta.map(r => r.insumoId === p.variantes.insumoBase ? {...r, insumoId: varianteId} : r);
+}
+
 // ---------- INSUMOS / RECETAS ----------
-// Descuenta del inventario de insumos lo que marque la receta de cada producto vendido.
-// Si un producto todavía no tiene receta definida (receta:[] vacío), simplemente no descuenta nada más.
-function descontarInsumosPorVenta(items){
+// Descuenta (signo -1) o devuelve (signo +1) los insumos de una lista de items vendidos.
+// Si un producto no tiene receta definida, simplemente no mueve insumos.
+function moverInsumosPorItems(items, signo){
   items.forEach(item=>{
     const p = productos.find(x=>x.id===item.productoId);
-    if(!p || !p.receta || p.receta.length===0) return;
-    p.receta.forEach(r=>{
+    if(!p) return;
+    recetaEfectiva(p, item.varianteId).forEach(r=>{
       const ins = insumos.find(x=>x.id===r.insumoId);
       if(!ins) return;
-      ins.stock -= (r.cantidad * item.cantidad);
+      ins.stock += signo * (r.cantidad * item.cantidad);
     });
   });
 }
 
+function descontarInsumosPorVenta(items){ moverInsumosPorItems(items, -1); }
+
 async function cobrarVenta(){
-  const ids = Object.keys(carrito);
-  if(ids.length === 0) return;
+  const claves = Object.keys(carrito);
+  if(claves.length === 0) return;
   let total = 0;
-  const items = ids.map(id=>{
-    const p = productos.find(x=>x.id===id);
-    const sub = p.precio * carrito[id];
-    total += sub;
-    return {productoId:id, nombre:p.nombre, cantidad:carrito[id], precioUnit:p.precio};
+  const items = claves.map(k=>{
+    const it = carrito[k];
+    const p = productos.find(x=>x.id===it.productoId);
+    total += p.precio * it.cantidad;
+    return {
+      productoId: it.productoId,
+      varianteId: it.varianteId || null,
+      nombre: nombreConVariante(p, it.varianteId),
+      cantidad: it.cantidad,
+      precioUnit: p.precio
+    };
   });
   ventas.push({id:uid(), fecha:todayStr(), ts:Date.now(), items, total});
   descontarInsumosPorVenta(items); // descuenta insumos según receta, si ya está definida
@@ -423,16 +482,26 @@ async function cobrarVenta(){
 }
 
 // ---------- INVENTARIO ----------
+let filtroMenu = '';
+function setFiltroMenu(v){ filtroMenu = (v||'').toLowerCase(); renderInventario(); }
+
 function renderInventario(){
   const list = document.getElementById('invList');
   if(productos.length === 0){
     list.innerHTML = '<div class="empty">Aún no tienes productos.</div>';
+    renderAjustes();
     return;
   }
-  list.innerHTML = productos.map(p=>`
+  const visibles = productos.filter(p=>!filtroMenu || p.nombre.toLowerCase().includes(filtroMenu));
+  if(visibles.length === 0){
+    list.innerHTML = '<div class="empty">Nada coincide con la búsqueda.</div>';
+    renderAjustes();
+    return;
+  }
+  list.innerHTML = visibles.map(p=>`
     <div class="list-row">
       <div class="list-main">
-        <div class="list-title">${escapeHtml(p.nombre)}</div>
+        <div class="list-title">${escapeHtml(p.nombre)}${tieneVariantes(p)?' <span class="pill">'+p.variantes.opciones.length+' opciones</span>':''}</div>
         <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)} · ${(p.receta&&p.receta.length)?p.receta.length+' insumo(s)':'sin receta'}</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
@@ -442,6 +511,7 @@ function renderInventario(){
 }
 
 let recetaTemp = [];
+let variantesTemp = null; // {insumoBase, opciones:[]}
 
 function openNewProd(){
   editingProdId = null;
@@ -452,7 +522,13 @@ function openNewProd(){
   document.getElementById('pCosto').value='';
   document.getElementById('delProdBtn').style.display='none';
   recetaTemp = [];
+  variantesTemp = null;
+  document.getElementById('recetaBuscar').value='';
+  document.getElementById('varOpcionBuscar').value='';
+  llenarSelectInsumos('recetaInsumoSelect','');
+  llenarSelectInsumos('varOpcionSelect','');
   renderRecetaEditor();
+  renderVariantesEditor();
   document.getElementById('modalBg').classList.add('show');
 }
 
@@ -467,7 +543,13 @@ function openEditProd(id){
   document.getElementById('pCosto').value=p.costo;
   document.getElementById('delProdBtn').style.display='inline-block';
   recetaTemp = JSON.parse(JSON.stringify(p.receta || []));
+  variantesTemp = p.variantes ? JSON.parse(JSON.stringify(p.variantes)) : null;
+  document.getElementById('recetaBuscar').value='';
+  document.getElementById('varOpcionBuscar').value='';
+  llenarSelectInsumos('recetaInsumoSelect','');
+  llenarSelectInsumos('varOpcionSelect','');
   renderRecetaEditor();
+  renderVariantesEditor();
   document.getElementById('modalBg').classList.add('show');
 }
 
@@ -476,20 +558,21 @@ function renderRecetaEditor(){
   if(!list) return;
   if(recetaTemp.length === 0){
     list.innerHTML = '<div class="empty" style="padding:8px 0;">Sin ingredientes agregados todavía</div>';
-    return;
+  }else{
+    list.innerHTML = recetaTemp.map((r,idx)=>{
+      const ins = insumos.find(x=>x.id===r.insumoId);
+      const nombre = ins ? ins.nombre : '(insumo eliminado)';
+      const unidad = ins ? (UNIDAD_LABEL[ins.unidad]||ins.unidad) : '';
+      return `<div class="cart-row">
+        <div class="list-title">${escapeHtml(nombre)}</div>
+        <div class="qty-ctrl">
+          <span>${r.cantidad} ${unidad}</span>
+          <button onclick="quitarIngrediente(${idx})">×</button>
+        </div>
+      </div>`;
+    }).join('');
   }
-  list.innerHTML = recetaTemp.map((r,idx)=>{
-    const ins = insumos.find(x=>x.id===r.insumoId);
-    const nombre = ins ? ins.nombre : '(insumo eliminado)';
-    const unidad = ins ? (UNIDAD_LABEL[ins.unidad]||ins.unidad) : '';
-    return `<div class="cart-row">
-      <div class="list-title">${escapeHtml(nombre)}</div>
-      <div class="qty-ctrl">
-        <span>${r.cantidad} ${unidad}</span>
-        <button onclick="quitarIngrediente(${idx})">×</button>
-      </div>
-    </div>`;
-  }).join('');
+  renderVarBaseSelect();
 }
 
 function agregarIngrediente(){
@@ -505,8 +588,66 @@ function agregarIngrediente(){
 }
 
 function quitarIngrediente(idx){
+  const quitado = recetaTemp[idx];
   recetaTemp.splice(idx,1);
+  // Si se quitó el insumo que servía de base para las variantes, se desactivan
+  if(variantesTemp && quitado && variantesTemp.insumoBase === quitado.insumoId) variantesTemp = null;
   renderRecetaEditor();
+  renderVariantesEditor();
+}
+
+// ---------- Editor de variantes ----------
+// Permite que un producto (ej. Tostilocos) se venda con distintas botanas sin
+// tener que crear un producto separado por cada una.
+function renderVarBaseSelect(){
+  const sel = document.getElementById('varBaseSelect');
+  if(!sel) return;
+  const opts = recetaTemp.map(r=>{
+    const ins = insumos.find(x=>x.id===r.insumoId);
+    return ins ? `<option value="${ins.id}">${escapeHtml(ins.nombre)}</option>` : '';
+  }).join('');
+  sel.innerHTML = '<option value="">Sin variantes</option>' + opts;
+  sel.value = variantesTemp ? variantesTemp.insumoBase : '';
+}
+
+function cambiarVarBase(){
+  const val = document.getElementById('varBaseSelect').value;
+  if(!val){ variantesTemp = null; }
+  else if(!variantesTemp || variantesTemp.insumoBase !== val){
+    // La primera opción siempre es el insumo original de la receta
+    variantesTemp = {insumoBase: val, opciones:[val]};
+  }
+  renderVariantesEditor();
+}
+
+function renderVariantesEditor(){
+  const cont = document.getElementById('varOpcionesList');
+  const box = document.getElementById('varOpcionesBox');
+  if(!cont || !box) return;
+  renderVarBaseSelect();
+  if(!variantesTemp){ box.style.display='none'; cont.innerHTML=''; return; }
+  box.style.display='block';
+  cont.innerHTML = variantesTemp.opciones.map((insId,idx)=>{
+    const ins = insumos.find(x=>x.id===insId);
+    return `<div class="cart-row">
+      <div class="list-title">${escapeHtml(ins?ins.nombre:'(insumo eliminado)')}</div>
+      <div class="qty-ctrl"><button onclick="quitarOpcionVariante(${idx})">×</button></div>
+    </div>`;
+  }).join('') || '<div class="empty" style="padding:8px 0;">Agrega al menos una opción</div>';
+}
+
+function agregarOpcionVariante(){
+  if(!variantesTemp){ showToast('Primero elige el insumo que cambia'); return; }
+  const val = document.getElementById('varOpcionSelect').value;
+  if(!val){ showToast('Elige un insumo'); return; }
+  if(variantesTemp.opciones.includes(val)){ showToast('Esa opción ya está'); return; }
+  variantesTemp.opciones.push(val);
+  renderVariantesEditor();
+}
+
+function quitarOpcionVariante(idx){
+  variantesTemp.opciones.splice(idx,1);
+  renderVariantesEditor();
 }
 
 async function saveProd(){
@@ -515,11 +656,13 @@ async function saveProd(){
   const precio = parseFloat(document.getElementById('pPrecio').value)||0;
   const costo = parseFloat(document.getElementById('pCosto').value)||0;
   if(!nombre){ showToast('Ponle un nombre'); return; }
+  // Si quedó una sola opción, no tiene sentido preguntar: se guarda sin variantes
+  const variantes = (variantesTemp && variantesTemp.opciones.length > 1) ? variantesTemp : null;
   if(editingProdId){
     const p = productos.find(x=>x.id===editingProdId);
-    Object.assign(p, {nombre, categoria, precio, costo, receta: recetaTemp});
+    Object.assign(p, {nombre, categoria, precio, costo, receta: recetaTemp, variantes});
   }else{
-    productos.push({id:uid(), nombre, categoria, precio, costo, receta: recetaTemp});
+    productos.push({id:uid(), nombre, categoria, precio, costo, receta: recetaTemp, variantes});
   }
   await saveProductos();
   document.getElementById('modalBg').classList.remove('show');
@@ -603,6 +746,9 @@ function renderAjustes(){
 let editingInsumoId = null;
 let insumoCatOpenState = {};
 
+let filtroInsumos = '';
+function setFiltroInsumos(v){ filtroInsumos = (v||'').toLowerCase(); renderInsumos(); }
+
 function renderInsumos(){
   const wrap = document.getElementById('insumoWrap');
   if(!wrap) return;
@@ -610,8 +756,13 @@ function renderInsumos(){
     wrap.innerHTML = '<div class="empty">Aún no tienes insumos. Agrega el primero con "+ Agregar insumo".</div>';
     return;
   }
+  const visibles = insumos.filter(i=>!filtroInsumos || i.nombre.toLowerCase().includes(filtroInsumos));
+  if(visibles.length === 0){
+    wrap.innerHTML = '<div class="empty">Ningún insumo coincide con la búsqueda.</div>';
+    return;
+  }
   const grupos = {};
-  insumos.forEach(i=>{
+  visibles.forEach(i=>{
     const cat = i.categoria || 'Otros';
     if(!grupos[cat]) grupos[cat] = [];
     grupos[cat].push(i);
@@ -620,7 +771,7 @@ function renderInsumos(){
   Object.keys(grupos).forEach(c=>{ if(!orden.includes(c)) orden.push(c); });
 
   wrap.innerHTML = orden.map(cat=>{
-    const abierto = insumoCatOpenState[cat] === true;
+    const abierto = filtroInsumos ? true : (insumoCatOpenState[cat] === true);
     const st = INSUMO_CAT_STYLE[cat] || {bg:'var(--muted)', fg:'#fff', emoji:'📦'};
     const filas = grupos[cat].map(i=>`
       <div class="list-row">
@@ -709,19 +860,43 @@ async function delInsumo(){
   showToast('Insumo eliminado');
 }
 
-function renderInsumoSelect(){
-  const options = insumos.map(i=>`<option value="${i.id}">${escapeHtml(i.nombre)} (${UNIDAD_LABEL[i.unidad]||i.unidad})</option>`).join('');
-  const sinInsumos = '<option value="">Agrega insumos en Inventario → Insumos</option>';
+// Llena un <select> de insumos, opcionalmente filtrando por texto.
+// Conserva la opción que ya estaba elegida si sigue apareciendo tras filtrar.
+function llenarSelectInsumos(selectId, filtro){
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  const previo = sel.value;
+  const f = (filtro||'').toLowerCase();
+  const lista = insumos.filter(i => !f || i.nombre.toLowerCase().includes(f));
 
-  const compraSel = document.getElementById('compraInsumoSelect');
-  if(compraSel){
-    compraSel.innerHTML = insumos.length ? options : sinInsumos;
-    actualizarUnidadCompra();
+  if(insumos.length === 0){
+    sel.innerHTML = '<option value="">Agrega insumos en Inventario → Insumos</option>';
+    return;
   }
-  const recetaSel = document.getElementById('recetaInsumoSelect');
-  if(recetaSel){
-    recetaSel.innerHTML = insumos.length ? options : sinInsumos;
+  if(lista.length === 0){
+    sel.innerHTML = '<option value="">Ningún insumo coincide</option>';
+    return;
   }
+  sel.innerHTML = lista.map(i=>`<option value="${i.id}">${escapeHtml(i.nombre)} (${UNIDAD_LABEL[i.unidad]||i.unidad})</option>`).join('');
+  if(lista.some(i=>i.id===previo)) sel.value = previo;
+}
+
+function renderInsumoSelect(){
+  llenarSelectInsumos('compraInsumoSelect', document.getElementById('compraBuscar')?.value || '');
+  llenarSelectInsumos('recetaInsumoSelect', document.getElementById('recetaBuscar')?.value || '');
+  llenarSelectInsumos('varOpcionSelect',    document.getElementById('varOpcionBuscar')?.value || '');
+  actualizarUnidadCompra();
+}
+
+function buscarInsumoCompra(){
+  llenarSelectInsumos('compraInsumoSelect', document.getElementById('compraBuscar').value);
+  actualizarUnidadCompra();
+}
+function buscarInsumoReceta(){
+  llenarSelectInsumos('recetaInsumoSelect', document.getElementById('recetaBuscar').value);
+}
+function buscarInsumoVariante(){
+  llenarSelectInsumos('varOpcionSelect', document.getElementById('varOpcionBuscar').value);
 }
 
 function actualizarUnidadCompra(){
@@ -849,15 +1024,7 @@ async function cancelarVenta(ventaId){
   if(!confirm(`¿Cancelar esta venta?\n\n${detalle}\nTotal: ${fmt(v.total)}\n\nSe regresarán los insumos al inventario.`)) return;
 
   // Devolver al inventario lo que consumió cada producto según su receta
-  v.items.forEach(item=>{
-    const p = productos.find(x=>x.id===item.productoId);
-    if(!p || !p.receta || p.receta.length===0) return;
-    p.receta.forEach(r=>{
-      const ins = insumos.find(x=>x.id===r.insumoId);
-      if(!ins) return;
-      ins.stock += (r.cantidad * item.cantidad);
-    });
-  });
+  moverInsumosPorItems(v.items, +1);
 
   ventas = ventas.filter(x=>x.id!==ventaId);
   await docRef.set({ventas, insumos}, {merge:true});
@@ -896,6 +1063,8 @@ document.getElementById('delInsumoBtn').addEventListener('click', delInsumo);
 document.getElementById('closeInsumoModal').addEventListener('click', ()=>document.getElementById('insumoModalBg').classList.remove('show'));
 document.getElementById('compraInsumoSelect').addEventListener('change', actualizarUnidadCompra);
 document.getElementById('agregarIngredienteBtn').addEventListener('click', agregarIngrediente);
+document.getElementById('agregarOpcionVarBtn').addEventListener('click', agregarOpcionVariante);
+document.getElementById('closeVarianteModal').addEventListener('click', ()=>document.getElementById('varianteModalBg').classList.remove('show'));
 
 document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
 
