@@ -66,10 +66,13 @@ const INSUMOS_INICIAL = [
 
   // --- Abarrotes y empaquetados ---
   {id:'ins_doritos_hot',    nombre:'Doritos Flamin Hot', categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:4},
+  {id:'ins_doritos_dinamita', nombre:'Doritos Dinamita Flamin Hot', categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:0},
   {id:'ins_cheetos_hot',    nombre:'Cheetos Flamin Hot', categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:3},
   {id:'ins_doritos_rojos',  nombre:'Doritos rojos',      categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:4},
   {id:'ins_takis',          nombre:'Takis Fuego',        categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:1},
   {id:'ins_tostitos',       nombre:'Tostitos verdes',    categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:9},
+  {id:'ins_tostitos_fh',    nombre:'Tostitos Flamin Hot',categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:0},
+  {id:'ins_ruffles_verdes', nombre:'Ruffles verdes',     categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:0},
   {id:'ins_totopos',        nombre:'Nachos totopos',     categoria:'Abarrotes y empaquetados', unidad:'g',     stock:350},
   {id:'ins_churros',        nombre:'Churros',            categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:4},
   {id:'ins_cueritos',       nombre:'Cueritos',           categoria:'Abarrotes y empaquetados', unidad:'g',     stock:100},
@@ -195,10 +198,79 @@ const MENU_INICIAL = [
   {id:'prod_queso_extra', nombre:'Queso extra', categoria:'Extras', precio:10, costo:0, receta:[R('ins_queso_nachos',30)]}
 ];
 
-// El menú y los insumos de arriba son SOLO la carga inicial: se usan una única vez,
-// cuando la base de datos está totalmente vacía. A partir de ahí el catálogo lo
-// administran las dueñas desde la app y el código ya NO lo vuelve a tocar nunca.
+// ============ MIGRACIONES ============
+// Cambios que se aplican una sola vez sobre una base que YA tiene datos.
+// Regla de oro: una migración solo puede AGREGAR o completar. Nunca borrar ni
+// reemplazar lo que las dueñas capturaron.
+const SABRITAS = [
+  {id:'ins_tostitos',          nombre:'Tostitos verdes'},
+  {id:'ins_tostitos_fh',       nombre:'Tostitos Flamin Hot'},
+  {id:'ins_doritos_rojos',     nombre:'Doritos rojos'},
+  {id:'ins_doritos_hot',       nombre:'Doritos Flamin Hot'},
+  {id:'ins_doritos_dinamita',  nombre:'Doritos Dinamita Flamin Hot'},
+  {id:'ins_cheetos_hot',       nombre:'Cheetos Flamin Hot'},
+  {id:'ins_ruffles_verdes',    nombre:'Ruffles verdes'}
+];
+
+const MIGRACIONES = [
+  {
+    id: 'sabritas_variantes_v1',
+    aplicar(){
+      // 1. Dar de alta las sabritas que falten (sin tocar las que ya existen)
+      SABRITAS.forEach(s=>{
+        if(!insumos.some(i=>i.id===s.id)){
+          insumos.push({id:s.id, nombre:s.nombre, categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:0});
+        }
+      });
+
+      // 2. Poner las 7 sabritas como variantes en los productos que la llevan.
+      //    "base" es el insumo de la receta que se intercambia.
+      const conVariantes = [
+        {nombres:['Tostilocos'],                       base:'ins_tostitos'},
+        {nombres:['Tostielote'],                       base:'ins_tostitos'},
+        {nombres:['Maruchan loca'],                    base:'ins_tostitos'},
+        {nombres:['Machicochinada','Maxi cochinada'],  base:'ins_doritos_hot'},
+        {nombres:['Sabritas con queso'],               base:'ins_cheetos_hot'}
+      ];
+      const opciones = SABRITAS.map(s=>s.id);
+
+      conVariantes.forEach(cfg=>{
+        const p = productos.find(x=>cfg.nombres.some(n=>x.nombre.toLowerCase().includes(n.toLowerCase())));
+        if(!p) return;
+        p.receta = p.receta || [];
+        // Si la receta no trae la sabrita base, se agrega (1 bolsa) para poder intercambiarla
+        if(!p.receta.some(r=>r.insumoId===cfg.base)) p.receta.push({insumoId:cfg.base, cantidad:1});
+        p.variantes = {insumoBase: cfg.base, opciones: [...opciones]};
+      });
+
+      // 3. Producto para vender la bolsa sola, si no existe ya
+      if(!productos.some(p=>p.nombre.toLowerCase().includes('bolsa sola'))){
+        productos.push({
+          id: uid(), nombre:'Sabritas (bolsa sola)', categoria:'Botanas',
+          precio:0, costo:0,
+          receta:[{insumoId:'ins_tostitos', cantidad:1}],
+          variantes:{insumoBase:'ins_tostitos', opciones:[...opciones]}
+        });
+      }
+    }
+  }
+];
+
+async function aplicarMigraciones(hechas){
+  const pendientes = MIGRACIONES.filter(m => !hechas.includes(m.id));
+  if(pendientes.length === 0) return false;
+  pendientes.forEach(m => m.aplicar());
+  await docRef.set({
+    productos, insumos,
+    migraciones: hechas.concat(pendientes.map(m=>m.id))
+  }, {merge:true});
+  return true;
+}
+
+// El menú y los insumos escritos arriba son SOLO la carga inicial de un puesto nuevo.
+// NUNCA deben sobrescribir un catálogo existente.
 let seeded = false;
+let migrado = false;
 
 function startListener(){
   docRef.onSnapshot(async (doc)=>{
@@ -209,15 +281,32 @@ function startListener(){
     ajustes = d.ajustes || [];
     insumos = d.insumos || [];
 
-    // Carga inicial únicamente si no hay absolutamente nada guardado
-    if(!seeded && productos.length === 0 && insumos.length === 0){
+    renderAll();
+
+    // ---- Carga inicial (solo para un puesto totalmente nuevo) ----
+    // Tres candados, porque escribir aquí por error borra el catálogo real:
+    //  1. Que el documento NO exista (no basta con que venga vacío).
+    //  2. Que los datos vengan del SERVIDOR, no de la caché local del navegador.
+    //     Al abrir la app, Firestore suele avisar primero con datos vacíos de caché;
+    //     confiar en ese primer aviso fue lo que borró el catálogo una vez.
+    //  3. Que no haya ventas, compras ni ajustes: si existen, este puesto YA venía
+    //     trabajando y su catálogo debe recuperarse, nunca reemplazarse.
+    const vieneDeCache = doc.metadata && doc.metadata.fromCache;
+    const yaHuboMovimientos = ventas.length > 0 || compras.length > 0 || ajustes.length > 0;
+
+    if(!seeded && !doc.exists && !vieneDeCache && !yaHuboMovimientos){
       seeded = true;
       productos = JSON.parse(JSON.stringify(MENU_INICIAL));
       insumos = JSON.parse(JSON.stringify(INSUMOS_INICIAL));
       await docRef.set({productos, insumos}, {merge:true});
-      return; // esto vuelve a disparar el snapshot con los datos ya guardados
+      return;
     }
-    renderAll();
+
+    // ---- Migraciones (solo AGREGAN cosas al catálogo que ya existe) ----
+    if(!migrado && doc.exists && !vieneDeCache && productos.length > 0){
+      migrado = true;
+      await aplicarMigraciones(d.migraciones || []);
+    }
   }, (err)=>{
     console.error(err);
     showToast('No se pudo conectar a la base de datos');
@@ -960,6 +1049,36 @@ function renderCompras(){
 }
 
 
+// ---------- RECUPERACIÓN ----------
+// Recupera insumos a partir del historial de compras: si en algún momento se
+// compró un insumo que hoy ya no está en el catálogo, lo vuelve a crear.
+// Sirve para rescatar el catálogo si se perdió pero el historial sobrevivió.
+async function reconstruirInsumosDesdeCompras(){
+  const existentes = new Set(insumos.map(i=>i.id));
+  const nuevos = [];
+  const vistos = new Set();
+  compras.forEach(c=>{
+    if(!c.insumoId || existentes.has(c.insumoId) || vistos.has(c.insumoId)) return;
+    vistos.add(c.insumoId);
+    nuevos.push({
+      id: c.insumoId,
+      nombre: c.insumoNombre || 'Insumo recuperado',
+      categoria: 'Abarrotes y empaquetados', // hay que reacomodarlo a mano
+      unidad: c.unidad || 'pieza',
+      stock: 0                                // hay que contarlo y ajustarlo
+    });
+  });
+  if(nuevos.length === 0){ showToast('No hay insumos que recuperar'); return; }
+  if(!confirm(`Se recuperarán ${nuevos.length} insumo(s) del historial de compras:\n\n` +
+              nuevos.map(n=>'• '+n.nombre).join('\n') +
+              `\n\nQuedarán en existencia 0 y en la categoría "Abarrotes y empaquetados"; ` +
+              `hay que corregirlos a mano.\n\n¿Continuar?`)) return;
+  insumos = insumos.concat(nuevos);
+  await saveInsumos();
+  renderAll();
+  showToast(nuevos.length + ' insumo(s) recuperados');
+}
+
 // ---------- RESUMEN ----------
 function renderResumen(){
   const hoy = todayStr();
@@ -1065,6 +1184,7 @@ document.getElementById('compraInsumoSelect').addEventListener('change', actuali
 document.getElementById('agregarIngredienteBtn').addEventListener('click', agregarIngrediente);
 document.getElementById('agregarOpcionVarBtn').addEventListener('click', agregarOpcionVariante);
 document.getElementById('closeVarianteModal').addEventListener('click', ()=>document.getElementById('varianteModalBg').classList.remove('show'));
+document.getElementById('reconstruirBtn').addEventListener('click', reconstruirInsumosDesdeCompras);
 
 document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
 
