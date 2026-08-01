@@ -42,9 +42,9 @@ const docRef = db.collection('puesto').doc('data');
 const INSUMOS_INICIAL = [
   // --- Frutas y verduras ---
   {id:'ins_elote',      nombre:'Elote',   categoria:'Frutas y verduras', unidad:'pieza', stock:0},
-  {id:'ins_limon',      nombre:'Limón',   categoria:'Frutas y verduras', unidad:'pieza', stock:0},
-  {id:'ins_pepino',     nombre:'Pepino',  categoria:'Frutas y verduras', unidad:'pieza', stock:0},
-  {id:'ins_jicama',     nombre:'Jícama',  categoria:'Frutas y verduras', unidad:'pieza', stock:0},
+  {id:'ins_limon',      nombre:'Limón',   categoria:'Frutas y verduras', unidad:'g', stock:0},
+  {id:'ins_pepino',     nombre:'Pepino',  categoria:'Frutas y verduras', unidad:'g', stock:0},
+  {id:'ins_jicama',     nombre:'Jícama',  categoria:'Frutas y verduras', unidad:'g', stock:0},
 
   // --- Salsas y condimentos ---
   {id:'ins_crema',        nombre:'Crema entera',        categoria:'Salsas y condimentos', unidad:'ml', stock:200},
@@ -110,18 +110,18 @@ const R = (insumoId, cantidad) => ({insumoId, cantidad});
 
 // Preparado base de un vaso de elote (lo que le ponen encima), por tamaño
 const BASE_10 = [R('ins_mayonesa',15), R('ins_crema',10), R('ins_queso_seco',15), R('ins_mantequilla',8),
-                 R('ins_tajin',2), R('ins_limon',0.5), R('ins_sal',1), R('ins_amor',5), R('ins_valentina',5)];
+                 R('ins_tajin',2), R('ins_limon',25), R('ins_sal',1), R('ins_amor',5), R('ins_valentina',5)];
 const BASE_12 = [R('ins_mayonesa',18), R('ins_crema',12), R('ins_queso_seco',18), R('ins_mantequilla',9),
-                 R('ins_tajin',2.5), R('ins_limon',0.5), R('ins_sal',1.2), R('ins_amor',6), R('ins_valentina',6)];
+                 R('ins_tajin',2.5), R('ins_limon',28), R('ins_sal',1.2), R('ins_amor',6), R('ins_valentina',6)];
 const BASE_14 = [R('ins_mayonesa',20), R('ins_crema',14), R('ins_queso_seco',20), R('ins_mantequilla',10),
-                 R('ins_tajin',3), R('ins_limon',0.5), R('ins_sal',1.5), R('ins_amor',7), R('ins_valentina',7)];
+                 R('ins_tajin',3), R('ins_limon',30), R('ins_sal',1.5), R('ins_amor',7), R('ins_valentina',7)];
 // Las 4 salsas extra que llevan las "cochinadas"
 const SALSAS_EXTRA = [R('ins_maggi',3), R('ins_inglesa',3), R('ins_pekin',3), R('ins_macha',5)];
 // Mezcla base de los "locos" (tostilocos, cueritos locos, churros locos)
-const BASE_LOCOS = [R('ins_pepino',0.25), R('ins_jicama',0.25), R('ins_cacahuate',15), R('ins_chacachacas',20),
+const BASE_LOCOS = [R('ins_pepino',50), R('ins_jicama',60), R('ins_cacahuate',15), R('ins_chacachacas',20),
                     R('ins_clamato',30), R('ins_chamoy',20), R('ins_valentina',10), R('ins_amor',10),
                     R('ins_maggi',3), R('ins_inglesa',3), R('ins_pekin',3), R('ins_tajin',3),
-                    R('ins_limon',0.5), R('ins_sal',1)];
+                    R('ins_limon',25), R('ins_sal',1)];
 
 const MENU_INICIAL = [
   // ---- ELOTES ----
@@ -153,10 +153,10 @@ const MENU_INICIAL = [
   {id:'prod_churrolocos32', nombre:'Churros locos (32 oz)', categoria:'Botanas', precio:0, costo:0, receta:[
     R('ins_vaso32',1), R('ins_churros',1), R('ins_tarugos',1), R('ins_cueritos',60), R('ins_serpentinas',1),
     R('ins_pulparindo',15), R('ins_tenedores',1),
-    R('ins_pepino',0.4), R('ins_jicama',0.4), R('ins_cacahuate',25), R('ins_chacachacas',30),
+    R('ins_pepino',80), R('ins_jicama',95), R('ins_cacahuate',25), R('ins_chacachacas',30),
     R('ins_clamato',50), R('ins_chamoy',35), R('ins_valentina',15), R('ins_amor',15),
     R('ins_maggi',5), R('ins_inglesa',5), R('ins_pekin',5), R('ins_tajin',5),
-    R('ins_limon',1), R('ins_sal',1.5)
+    R('ins_limon',50), R('ins_sal',1.5)
   ]},
   {id:'prod_maruchan', nombre:'Maruchan loca', categoria:'Botanas', precio:130, costo:0, receta:[
     R('ins_maruchan',1), R('ins_elote',2.25), R('ins_tostitos',0.25), R('ins_charola_grande',1),
@@ -197,7 +197,7 @@ const MENU_INICIAL = [
 
 // Al subir este número, la app vuelve a cargar el menú y los insumos de arriba.
 // OJO: sobrescribe precios y recetas editados a mano en la app.
-const DATOS_VERSION = '5';
+const DATOS_VERSION = '6';
 let seeded = false;
 
 function startListener(){

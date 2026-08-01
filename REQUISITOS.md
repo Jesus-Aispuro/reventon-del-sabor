@@ -104,6 +104,8 @@ Ambos quedan registrados con fecha, cantidad y motivo.
 **Faltan datos que las dueñas deben confirmar:**
 - **Existencia de 6 insumos** que las recetas usan pero no venían en la lista, y
   quedaron en 0: Elote, Limón, Pepino, Jícama, Salsa macha y Bolsas.
+- **Pepino, jícama y limón se manejan en gramos**, porque las dueñas los compran
+  por kilo. Al registrar la compra de un kilo se capturan 1000 g.
 - **Precio de 6 productos** que quedaron en $0: Churros locos (32 oz),
   Nachos con elote, Cochinada, Machicochinada, Arizona y Capri-Sun.
 - **Coca-Cola 300 ml** aparecía en el menú del puesto pero no en el inventario;
