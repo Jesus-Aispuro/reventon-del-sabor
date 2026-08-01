@@ -55,8 +55,10 @@ seguirán usando la versión vieja guardada y la app se romperá de formas raras
 
 ### Inventario
 Dos pestañas:
-- **Menú** — productos que se venden (nombre, categoría, precio, costo, existencia,
-  y su **receta**: qué insumos consume y cuánto). Botones Editar y Ajustar.
+- **Menú** — productos que se venden (nombre, categoría, precio, costo y su
+  **receta**: qué insumos consume y cuánto). Solo botón Editar.
+  **Los productos del menú NO tienen existencia propia**: se preparan al momento,
+  así que lo único inventariado son los insumos.
 - **Insumos** — ingredientes crudos, agrupados en 4 categorías plegables:
   - Frutas y verduras
   - Salsas y condimentos
@@ -77,7 +79,7 @@ Dos pestañas:
 - Últimas ventas.
 
 ### Ajustes y merma
-Disponible tanto para productos como para insumos. Dos tipos:
+Solo sobre **insumos** (los productos del menú no tienen existencia). Dos tipos:
 - **Merma / pérdida** — se tiró o se echó a perder (resta del stock).
 - **Ajuste a favor** — había más de lo que marcaba el sistema (suma al stock).
 
@@ -99,11 +101,23 @@ Ambos quedan registrados con fecha, cantidad y motivo.
 
 ## 6. Pendientes / ideas a futuro
 
-- Cargar el inventario real de insumos y las recetas de cada producto.
-- Descontar desechables (vasos, servilletas, bolsas) — uno por venta, aparte de la receta.
+**Faltan datos que las dueñas deben confirmar:**
+- **Existencia de 6 insumos** que las recetas usan pero no venían en la lista, y
+  quedaron en 0: Elote, Limón, Pepino, Jícama, Salsa macha y Bolsas.
+- **Precio de 6 productos** que quedaron en $0: Churros locos (32 oz),
+  Nachos con elote, Cochinada, Machicochinada, Arizona y Capri-Sun.
+- **Coca-Cola 300 ml** aparecía en el menú del puesto pero no en el inventario;
+  se quitó del menú. Si la siguen vendiendo, hay que darla de alta como insumo y producto.
+- Las cantidades de las recetas son **estimaciones**, no medidas exactas. Conviene
+  compararlas contra el consumo real de una semana y corregirlas.
+- Insumos en la lista que hoy no usa ninguna receta: Doritos rojos, Takis Fuego,
+  Chimichangas, Charola plana. Falta saber en qué producto entran.
+
+**Ideas a futuro:**
 - Roles de usuario (empleada solo vende / dueña ve reportes y edita precios),
   usando Firebase Authentication.
 - Reportes por semana o por producto más vendido.
+- Aviso automático cuando un insumo esté por agotarse.
 
 ## 7. Cómo publicar un cambio
 

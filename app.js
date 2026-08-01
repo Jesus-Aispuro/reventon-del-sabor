@@ -36,33 +36,168 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const docRef = db.collection('puesto').doc('data');
 
-const MENU_INICIAL = [
-  {id: uid(), nombre:'Elote entero', categoria:'Elotes', precio:45, costo:0, stock:20},
-  {id: uid(), nombre:'Vaso chico', categoria:'Elotes', precio:45, costo:0, stock:20},
-  {id: uid(), nombre:'Vaso grande', categoria:'Elotes', precio:65, costo:0, stock:20},
-  {id: uid(), nombre:'Tostilocos', categoria:'Botanas', precio:80, costo:0, stock:20},
-  {id: uid(), nombre:'Churrolocos', categoria:'Botanas', precio:100, costo:0, stock:20},
-  {id: uid(), nombre:'Cueritoslocos', categoria:'Botanas', precio:60, costo:0, stock:20},
-  {id: uid(), nombre:'Nachos chico', categoria:'Botanas', precio:60, costo:0, stock:20},
-  {id: uid(), nombre:'Nachos grande', categoria:'Botanas', precio:80, costo:0, stock:20},
-  {id: uid(), nombre:'Maruchan loca', categoria:'Botanas', precio:130, costo:0, stock:20},
-  {id: uid(), nombre:'Sabritas con queso', categoria:'Botanas', precio:40, costo:0, stock:20},
-  {id: uid(), nombre:'Tostielote', categoria:'Botanas', precio:80, costo:0, stock:20},
-  {id: uid(), nombre:'Coca-Cola 600ml', categoria:'Bebidas', precio:25, costo:0, stock:20},
-  {id: uid(), nombre:'Coca-Cola 300ml', categoria:'Bebidas', precio:15, costo:0, stock:20},
-  {id: uid(), nombre:'Queso extra', categoria:'Extras', precio:10, costo:0, stock:50}
-];
-// Para asignar categoría a productos que ya existían antes de este cambio
-const CATEGORIA_POR_NOMBRE = {};
-MENU_INICIAL.forEach(p => CATEGORIA_POR_NOMBRE[p.nombre] = p.categoria);
-// Para renombrar categorías de una versión anterior (Antojitos/Elotes y vasos) a las 4 nuevas
-const CATEGORIA_RENOMBRE = {
-  'Antojitos': 'Botanas',
-  'Elotes y vasos': 'Elotes'
-};
+// ============ CATÁLOGO DE INSUMOS ============
+// El "stock" es lo que había cuando se cargó la lista. Se actualiza solo con
+// las compras, las ventas (por receta) y los ajustes/merma.
+const INSUMOS_INICIAL = [
+  // --- Frutas y verduras ---
+  {id:'ins_elote',      nombre:'Elote',   categoria:'Frutas y verduras', unidad:'pieza', stock:0},
+  {id:'ins_limon',      nombre:'Limón',   categoria:'Frutas y verduras', unidad:'pieza', stock:0},
+  {id:'ins_pepino',     nombre:'Pepino',  categoria:'Frutas y verduras', unidad:'pieza', stock:0},
+  {id:'ins_jicama',     nombre:'Jícama',  categoria:'Frutas y verduras', unidad:'pieza', stock:0},
 
-const MENU_VERSION = '2';
-const CATEGORIA_VERSION = '3';
+  // --- Salsas y condimentos ---
+  {id:'ins_crema',        nombre:'Crema entera',        categoria:'Salsas y condimentos', unidad:'ml', stock:200},
+  {id:'ins_mayonesa',     nombre:'Mayonesa',            categoria:'Salsas y condimentos', unidad:'g',  stock:3000},
+  {id:'ins_mantequilla',  nombre:'Mantequilla',         categoria:'Salsas y condimentos', unidad:'g',  stock:500},
+  {id:'ins_queso_nachos', nombre:'Queso para nachos',   categoria:'Salsas y condimentos', unidad:'g',  stock:1500},
+  {id:'ins_queso_seco',   nombre:'Queso seco',          categoria:'Salsas y condimentos', unidad:'g',  stock:200},
+  {id:'ins_chiles',       nombre:'Chiles para nachos',  categoria:'Salsas y condimentos', unidad:'g',  stock:100},
+  {id:'ins_chamoy',       nombre:'Chamoy',              categoria:'Salsas y condimentos', unidad:'g',  stock:2500},
+  {id:'ins_amor',         nombre:'Salsa del amor',      categoria:'Salsas y condimentos', unidad:'ml', stock:2000},
+  {id:'ins_valentina',    nombre:'Salsa Valentina',     categoria:'Salsas y condimentos', unidad:'ml', stock:700},
+  {id:'ins_tajin',        nombre:'Tajín',               categoria:'Salsas y condimentos', unidad:'g',  stock:400},
+  {id:'ins_inglesa',      nombre:'Salsa inglesa',       categoria:'Salsas y condimentos', unidad:'g',  stock:45},
+  {id:'ins_pekin',        nombre:'Salsa Pekín',         categoria:'Salsas y condimentos', unidad:'ml', stock:355},
+  {id:'ins_maggi',        nombre:'Salsa Maggi',         categoria:'Salsas y condimentos', unidad:'ml', stock:150},
+  {id:'ins_macha',        nombre:'Salsa macha',         categoria:'Salsas y condimentos', unidad:'ml', stock:0},
+  {id:'ins_clamato',      nombre:'Clamato',             categoria:'Salsas y condimentos', unidad:'ml', stock:1000},
+  {id:'ins_sal',          nombre:'Sal',                 categoria:'Salsas y condimentos', unidad:'g',  stock:850},
+
+  // --- Abarrotes y empaquetados ---
+  {id:'ins_doritos_hot',    nombre:'Doritos Flamin Hot', categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:4},
+  {id:'ins_cheetos_hot',    nombre:'Cheetos Flamin Hot', categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:3},
+  {id:'ins_doritos_rojos',  nombre:'Doritos rojos',      categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:4},
+  {id:'ins_takis',          nombre:'Takis Fuego',        categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:1},
+  {id:'ins_tostitos',       nombre:'Tostitos verdes',    categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:9},
+  {id:'ins_totopos',        nombre:'Nachos totopos',     categoria:'Abarrotes y empaquetados', unidad:'g',     stock:350},
+  {id:'ins_churros',        nombre:'Churros',            categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:4},
+  {id:'ins_cueritos',       nombre:'Cueritos',           categoria:'Abarrotes y empaquetados', unidad:'g',     stock:100},
+  {id:'ins_cacahuate',      nombre:'Cacahuate',          categoria:'Abarrotes y empaquetados', unidad:'g',     stock:1000},
+  {id:'ins_serpentinas',    nombre:'Serpentinas',        categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:20},
+  {id:'ins_chimichangas',   nombre:'Chimichangas',       categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:20},
+  {id:'ins_skwinkles',      nombre:'Skwinkles',          categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:5},
+  {id:'ins_chacachacas',    nombre:'Chacachacas',        categoria:'Abarrotes y empaquetados', unidad:'g',     stock:700},
+  {id:'ins_pulparindo',     nombre:'Pulparindo',         categoria:'Abarrotes y empaquetados', unidad:'g',     stock:200},
+  {id:'ins_tarugos',        nombre:'Tarugos',            categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:25},
+  {id:'ins_maruchan',       nombre:'Maruchan camarón',   categoria:'Abarrotes y empaquetados', unidad:'pieza', stock:8},
+
+  // --- Desechables y bebidas ---
+  {id:'ins_coca600',        nombre:'Coca-Cola 600ml',            categoria:'Desechables y bebidas', unidad:'pieza', stock:17},
+  {id:'ins_coca600_sa',     nombre:'Coca-Cola 600ml sin azúcar', categoria:'Desechables y bebidas', unidad:'pieza', stock:9},
+  {id:'ins_caprisun',       nombre:'Capri-Sun',                  categoria:'Desechables y bebidas', unidad:'pieza', stock:1},
+  {id:'ins_arizona',        nombre:'Arizona',                    categoria:'Desechables y bebidas', unidad:'pieza', stock:7},
+  {id:'ins_charola_nachos', nombre:'Charola para nachos',        categoria:'Desechables y bebidas', unidad:'pieza', stock:98},
+  {id:'ins_charola_grande', nombre:'Charola grande',             categoria:'Desechables y bebidas', unidad:'pieza', stock:25},
+  {id:'ins_charola_plana',  nombre:'Charola plana',              categoria:'Desechables y bebidas', unidad:'pieza', stock:24},
+  {id:'ins_charola_elote',  nombre:'Charola para elote',         categoria:'Desechables y bebidas', unidad:'pieza', stock:2},
+  {id:'ins_aluminio',       nombre:'Papel aluminio',             categoria:'Desechables y bebidas', unidad:'pieza', stock:13},
+  {id:'ins_vaso10',         nombre:'Vaso 10 oz',                 categoria:'Desechables y bebidas', unidad:'pieza', stock:1},
+  {id:'ins_vaso14',         nombre:'Vaso 14 oz',                 categoria:'Desechables y bebidas', unidad:'pieza', stock:14},
+  {id:'ins_vaso16',         nombre:'Vaso 16 oz',                 categoria:'Desechables y bebidas', unidad:'pieza', stock:28},
+  {id:'ins_vaso32',         nombre:'Vaso 32 oz',                 categoria:'Desechables y bebidas', unidad:'pieza', stock:17},
+  {id:'ins_palos',          nombre:'Palos',                      categoria:'Desechables y bebidas', unidad:'pieza', stock:6},
+  {id:'ins_cucharas',       nombre:'Cucharas',                   categoria:'Desechables y bebidas', unidad:'pieza', stock:60},
+  {id:'ins_tenedores',      nombre:'Tenedores',                  categoria:'Desechables y bebidas', unidad:'pieza', stock:20},
+  {id:'ins_bolsas',         nombre:'Bolsas',                     categoria:'Desechables y bebidas', unidad:'pieza', stock:0}
+];
+
+// ============ RECETAS ============
+// El elote se descuenta por PIEZA (fracciones), no por gramos, porque las dueñas
+// sirven al tanteo. Equivalencias medidas por ellas:
+//   vaso 10 oz = 1.75 elotes | vaso 12 oz = 2 elotes | vaso 14 oz = 2.25 elotes
+const R = (insumoId, cantidad) => ({insumoId, cantidad});
+
+// Preparado base de un vaso de elote (lo que le ponen encima), por tamaño
+const BASE_10 = [R('ins_mayonesa',15), R('ins_crema',10), R('ins_queso_seco',15), R('ins_mantequilla',8),
+                 R('ins_tajin',2), R('ins_limon',0.5), R('ins_sal',1), R('ins_amor',5), R('ins_valentina',5)];
+const BASE_12 = [R('ins_mayonesa',18), R('ins_crema',12), R('ins_queso_seco',18), R('ins_mantequilla',9),
+                 R('ins_tajin',2.5), R('ins_limon',0.5), R('ins_sal',1.2), R('ins_amor',6), R('ins_valentina',6)];
+const BASE_14 = [R('ins_mayonesa',20), R('ins_crema',14), R('ins_queso_seco',20), R('ins_mantequilla',10),
+                 R('ins_tajin',3), R('ins_limon',0.5), R('ins_sal',1.5), R('ins_amor',7), R('ins_valentina',7)];
+// Las 4 salsas extra que llevan las "cochinadas"
+const SALSAS_EXTRA = [R('ins_maggi',3), R('ins_inglesa',3), R('ins_pekin',3), R('ins_macha',5)];
+// Mezcla base de los "locos" (tostilocos, cueritos locos, churros locos)
+const BASE_LOCOS = [R('ins_pepino',0.25), R('ins_jicama',0.25), R('ins_cacahuate',15), R('ins_chacachacas',20),
+                    R('ins_clamato',30), R('ins_chamoy',20), R('ins_valentina',10), R('ins_amor',10),
+                    R('ins_maggi',3), R('ins_inglesa',3), R('ins_pekin',3), R('ins_tajin',3),
+                    R('ins_limon',0.5), R('ins_sal',1)];
+
+const MENU_INICIAL = [
+  // ---- ELOTES ----
+  {id:'prod_elote_entero', nombre:'Elote entero', categoria:'Elotes', precio:45, costo:0, receta:[
+    R('ins_elote',1), R('ins_palos',1), R('ins_aluminio',1), R('ins_charola_elote',1), ...BASE_10
+  ]},
+  {id:'prod_vaso_chico', nombre:'Vaso chico (10 oz)', categoria:'Elotes', precio:45, costo:0, receta:[
+    R('ins_elote',1.75), R('ins_vaso10',1), R('ins_cucharas',1), ...BASE_10
+  ]},
+  {id:'prod_vaso_grande', nombre:'Vaso grande (14 oz)', categoria:'Elotes', precio:65, costo:0, receta:[
+    R('ins_elote',2.25), R('ins_vaso14',1), R('ins_cucharas',1), ...BASE_14
+  ]},
+  {id:'prod_tostielote', nombre:'Tostielote', categoria:'Elotes', precio:80, costo:0, receta:[
+    R('ins_elote',2), R('ins_tostitos',0.5), R('ins_vaso14',1), R('ins_cucharas',1), ...BASE_12
+  ]},
+
+  // ---- BOTANAS ----
+  {id:'prod_tostilocos', nombre:'Tostilocos', categoria:'Botanas', precio:80, costo:0, receta:[
+    R('ins_tostitos',1), R('ins_cueritos',20), R('ins_skwinkles',1), R('ins_tenedores',1), ...BASE_LOCOS
+  ]},
+  {id:'prod_cueritoslocos', nombre:'Cueritos locos (16 oz)', categoria:'Botanas', precio:60, costo:0, receta:[
+    R('ins_vaso16',1), R('ins_cueritos',40), R('ins_serpentinas',1), R('ins_pulparindo',10),
+    R('ins_tenedores',1), ...BASE_LOCOS
+  ]},
+  {id:'prod_churrolocos', nombre:'Churros locos (16 oz)', categoria:'Botanas', precio:100, costo:0, receta:[
+    R('ins_vaso16',1), R('ins_churros',0.5), R('ins_cueritos',40), R('ins_serpentinas',1),
+    R('ins_pulparindo',10), R('ins_tenedores',1), ...BASE_LOCOS
+  ]},
+  {id:'prod_churrolocos32', nombre:'Churros locos (32 oz)', categoria:'Botanas', precio:0, costo:0, receta:[
+    R('ins_vaso32',1), R('ins_churros',1), R('ins_tarugos',1), R('ins_cueritos',60), R('ins_serpentinas',1),
+    R('ins_pulparindo',15), R('ins_tenedores',1),
+    R('ins_pepino',0.4), R('ins_jicama',0.4), R('ins_cacahuate',25), R('ins_chacachacas',30),
+    R('ins_clamato',50), R('ins_chamoy',35), R('ins_valentina',15), R('ins_amor',15),
+    R('ins_maggi',5), R('ins_inglesa',5), R('ins_pekin',5), R('ins_tajin',5),
+    R('ins_limon',1), R('ins_sal',1.5)
+  ]},
+  {id:'prod_maruchan', nombre:'Maruchan loca', categoria:'Botanas', precio:130, costo:0, receta:[
+    R('ins_maruchan',1), R('ins_elote',2.25), R('ins_tostitos',0.25), R('ins_charola_grande',1),
+    R('ins_tenedores',1), ...BASE_14
+  ]},
+  {id:'prod_nachos_chico', nombre:'Nachos chico', categoria:'Botanas', precio:60, costo:0, receta:[
+    R('ins_totopos',50), R('ins_queso_nachos',50), R('ins_chiles',10),
+    R('ins_charola_nachos',1), R('ins_tenedores',1)
+  ]},
+  {id:'prod_nachos_grande', nombre:'Nachos grande', categoria:'Botanas', precio:80, costo:0, receta:[
+    R('ins_totopos',90), R('ins_queso_nachos',80), R('ins_chiles',15),
+    R('ins_charola_grande',1), R('ins_tenedores',1)
+  ]},
+  {id:'prod_nachos_elote', nombre:'Nachos con elote', categoria:'Botanas', precio:0, costo:0, receta:[
+    R('ins_totopos',60), R('ins_queso_nachos',60), R('ins_chiles',10), R('ins_elote',1.75),
+    R('ins_charola_nachos',1), R('ins_tenedores',1), ...BASE_10
+  ]},
+  {id:'prod_sabritas_queso', nombre:'Sabritas con queso', categoria:'Botanas', precio:40, costo:0, receta:[
+    R('ins_cheetos_hot',1), R('ins_queso_nachos',40), R('ins_chiles',10), R('ins_tenedores',1)
+  ]},
+  {id:'prod_cochinada', nombre:'Cochinada', categoria:'Botanas', precio:0, costo:0, receta:[
+    R('ins_elote',1), R('ins_bolsas',1), ...BASE_10, ...SALSAS_EXTRA
+  ]},
+  {id:'prod_machicochinada', nombre:'Machicochinada', categoria:'Botanas', precio:0, costo:0, receta:[
+    R('ins_elote',2.75), R('ins_bolsas',1), R('ins_doritos_hot',1), R('ins_tenedores',1),
+    ...BASE_10, ...SALSAS_EXTRA
+  ]},
+
+  // ---- BEBIDAS ----
+  {id:'prod_coca600', nombre:'Coca-Cola 600ml', categoria:'Bebidas', precio:25, costo:0, receta:[R('ins_coca600',1)]},
+  {id:'prod_coca600_sa', nombre:'Coca-Cola 600ml sin azúcar', categoria:'Bebidas', precio:25, costo:0, receta:[R('ins_coca600_sa',1)]},
+  {id:'prod_arizona', nombre:'Arizona', categoria:'Bebidas', precio:0, costo:0, receta:[R('ins_arizona',1)]},
+  {id:'prod_caprisun', nombre:'Capri-Sun', categoria:'Bebidas', precio:0, costo:0, receta:[R('ins_caprisun',1)]},
+
+  // ---- EXTRAS ----
+  {id:'prod_queso_extra', nombre:'Queso extra', categoria:'Extras', precio:10, costo:0, receta:[R('ins_queso_nachos',30)]}
+];
+
+// Al subir este número, la app vuelve a cargar el menú y los insumos de arriba.
+// OJO: sobrescribe precios y recetas editados a mano en la app.
+const DATOS_VERSION = '5';
 let seeded = false;
 
 function startListener(){
@@ -74,22 +209,17 @@ function startListener(){
     ajustes = d.ajustes || [];
     insumos = d.insumos || [];
 
-    if(!seeded && (productos.length === 0 || d.menu_version !== MENU_VERSION)){
+    if(!seeded && d.datos_version !== DATOS_VERSION){
       seeded = true;
       productos = JSON.parse(JSON.stringify(MENU_INICIAL));
-      await docRef.set({productos, menu_version: MENU_VERSION, categoria_version: CATEGORIA_VERSION}, {merge:true});
+      // Los insumos que ya existan conservan su existencia actual; solo se agregan los nuevos
+      const previos = {};
+      insumos.forEach(i => previos[i.id] = i.stock);
+      insumos = JSON.parse(JSON.stringify(INSUMOS_INICIAL)).map(i=>(
+        previos[i.id] !== undefined ? {...i, stock: previos[i.id]} : i
+      ));
+      await docRef.set({productos, insumos, datos_version: DATOS_VERSION}, {merge:true});
       return; // esto vuelve a disparar el snapshot con los datos ya guardados
-    }
-
-    if(!seeded && d.categoria_version !== CATEGORIA_VERSION){
-      seeded = true;
-      productos = productos.map(p=>{
-        let cat = p.categoria || CATEGORIA_POR_NOMBRE[p.nombre] || 'Extras';
-        if(CATEGORIA_RENOMBRE[cat]) cat = CATEGORIA_RENOMBRE[cat];
-        return {...p, categoria: cat};
-      });
-      await docRef.set({productos, categoria_version: CATEGORIA_VERSION}, {merge:true});
-      return;
     }
     renderAll();
   }, (err)=>{
@@ -176,10 +306,10 @@ function renderProdGrid(){
     const abierto = catState[cat] === true;
     const st = catStyleFor(cat);
     const items = grupos[cat].map(p => `
-      <button class="prod-btn" onclick="addToCart('${p.id}')" ${p.stock<=0?'style="opacity:0.45;"':''}>
+      <button class="prod-btn" onclick="addToCart('${p.id}')">
         <div class="prod-name">${escapeHtml(p.nombre)}</div>
         <div class="prod-price">${fmt(p.precio)}</div>
-        <div class="prod-stock ${p.stock<=3?'low':''}">${p.stock<=0?'Sin stock':'Stock: '+p.stock}</div>
+        ${p.precio<=0?'<div class="prod-stock low">Falta poner precio</div>':''}
       </button>
     `).join('');
     return `
@@ -202,16 +332,14 @@ function renderProdGrid(){
 
 function addToCart(id){
   const p = productos.find(x=>x.id===id);
-  if(!p || p.stock <= (carrito[id]||0)) { showToast('No hay más stock'); return; }
+  if(!p) return;
   carrito[id] = (carrito[id]||0) + 1;
   renderCart();
 }
 
 function changeCartQty(id, delta){
-  const p = productos.find(x=>x.id===id);
   let q = (carrito[id]||0) + delta;
   if(q <= 0){ delete carrito[id]; }
-  else if(p && q > p.stock){ showToast('No hay más stock'); return; }
   else { carrito[id] = q; }
   renderCart();
 }
@@ -281,7 +409,6 @@ async function cobrarVenta(){
   let total = 0;
   const items = ids.map(id=>{
     const p = productos.find(x=>x.id===id);
-    p.stock -= carrito[id];
     const sub = p.precio * carrito[id];
     total += sub;
     return {productoId:id, nombre:p.nombre, cantidad:carrito[id], precioUnit:p.precio};
@@ -308,11 +435,7 @@ function renderInventario(){
         <div class="list-title">${escapeHtml(p.nombre)}</div>
         <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)} · ${(p.receta&&p.receta.length)?p.receta.length+' insumo(s)':'sin receta'}</div>
       </div>
-      <div class="pill ${p.stock<=3?'low':''}" style="${p.stock<=3?'background:#FBEAE1;color:#D6482B;':''}">Stock: ${p.stock}</div>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
-        <button class="btn btn-ghost btn-sm" onclick="openAjuste('${p.id}')">Ajustar</button>
-      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
     </div>
   `).join('');
   renderAjustes();
@@ -327,7 +450,6 @@ function openNewProd(){
   document.getElementById('pCategoria').value='';
   document.getElementById('pPrecio').value='';
   document.getElementById('pCosto').value='';
-  document.getElementById('pStock').value='';
   document.getElementById('delProdBtn').style.display='none';
   recetaTemp = [];
   renderRecetaEditor();
@@ -343,7 +465,6 @@ function openEditProd(id){
   document.getElementById('pCategoria').value=p.categoria || '';
   document.getElementById('pPrecio').value=p.precio;
   document.getElementById('pCosto').value=p.costo;
-  document.getElementById('pStock').value=p.stock;
   document.getElementById('delProdBtn').style.display='inline-block';
   recetaTemp = JSON.parse(JSON.stringify(p.receta || []));
   renderRecetaEditor();
@@ -393,13 +514,12 @@ async function saveProd(){
   const categoria = document.getElementById('pCategoria').value.trim() || 'Otros';
   const precio = parseFloat(document.getElementById('pPrecio').value)||0;
   const costo = parseFloat(document.getElementById('pCosto').value)||0;
-  const stock = parseInt(document.getElementById('pStock').value)||0;
   if(!nombre){ showToast('Ponle un nombre'); return; }
   if(editingProdId){
     const p = productos.find(x=>x.id===editingProdId);
-    Object.assign(p, {nombre, categoria, precio, costo, stock, receta: recetaTemp});
+    Object.assign(p, {nombre, categoria, precio, costo, receta: recetaTemp});
   }else{
-    productos.push({id:uid(), nombre, categoria, precio, costo, stock, receta: recetaTemp});
+    productos.push({id:uid(), nombre, categoria, precio, costo, receta: recetaTemp});
   }
   await saveProductos();
   document.getElementById('modalBg').classList.remove('show');
@@ -416,21 +536,11 @@ async function delProd(){
   showToast('Producto eliminado');
 }
 
-// ---------- AJUSTES / MERMA (funciona para productos e insumos) ----------
+// ---------- AJUSTES / MERMA (solo sobre insumos) ----------
+// Los productos del menú ya no tienen existencia propia: se preparan al momento,
+// así que la merma real siempre ocurre sobre un insumo.
 let ajustandoId = null;
-let ajustandoTipoArticulo = 'producto'; // 'producto' o 'insumo'
-
-function openAjuste(id){
-  const p = productos.find(x=>x.id===id);
-  if(!p) return;
-  ajustandoId = id;
-  ajustandoTipoArticulo = 'producto';
-  document.getElementById('ajusteProdNombre').textContent = p.nombre;
-  document.getElementById('ajusteTipo').value = 'perdida';
-  document.getElementById('ajusteCantidad').value = '';
-  document.getElementById('ajusteMotivo').value = '';
-  document.getElementById('ajusteModalBg').classList.add('show');
-}
+let ajustandoTipoArticulo = 'insumo';
 
 function openAjusteInsumo(id){
   const ins = insumos.find(x=>x.id===id);
