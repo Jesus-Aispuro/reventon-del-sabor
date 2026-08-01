@@ -76,7 +76,15 @@ Dos pestañas:
 - Vendido y gastado **hoy**.
 - Ventas, gastos y ganancia **de todo el tiempo**.
 - **Merma**: cuántas hoy, cuántas en total, y las más recientes.
-- Últimas ventas.
+- Últimas ventas, cada una con botón **Cancelar**.
+
+### Cancelar una venta
+Se hace desde Resumen → Cancelar. Eso borra la venta **y regresa los insumos**
+al inventario según la receta.
+
+⚠️ **Nunca borrar ventas directo en Firestore.** Si se borra por fuera, la app no
+tiene forma de saber qué insumos devolver y el inventario queda descuadrado
+(hay que corregirlo a mano con "Ajuste a favor").
 
 ### Ajustes y merma
 Solo sobre **insumos** (los productos del menú no tienen existencia). Dos tipos:

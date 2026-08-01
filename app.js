@@ -834,8 +834,35 @@ function renderResumen(){
         <div class="list-sub">${v.fecha}</div>
       </div>
       <div class="pill">${fmt(v.total)}</div>
+      <button class="btn btn-ghost btn-sm" onclick="cancelarVenta('${v.id}')">Cancelar</button>
     </div>
   `).join('');
+}
+
+// Cancela una venta: la borra del historial y REGRESA los insumos al inventario.
+// Siempre hay que cancelar desde aquí, no borrando el dato en Firestore: si se
+// borra por fuera, la app no puede saber qué insumos devolver.
+async function cancelarVenta(ventaId){
+  const v = ventas.find(x=>x.id===ventaId);
+  if(!v) return;
+  const detalle = v.items.map(i=>i.cantidad+'x '+i.nombre).join(', ');
+  if(!confirm(`¿Cancelar esta venta?\n\n${detalle}\nTotal: ${fmt(v.total)}\n\nSe regresarán los insumos al inventario.`)) return;
+
+  // Devolver al inventario lo que consumió cada producto según su receta
+  v.items.forEach(item=>{
+    const p = productos.find(x=>x.id===item.productoId);
+    if(!p || !p.receta || p.receta.length===0) return;
+    p.receta.forEach(r=>{
+      const ins = insumos.find(x=>x.id===r.insumoId);
+      if(!ins) return;
+      ins.stock += (r.cantidad * item.cantidad);
+    });
+  });
+
+  ventas = ventas.filter(x=>x.id!==ventaId);
+  await docRef.set({ventas, insumos}, {merge:true});
+  renderAll();
+  showToast('Venta cancelada, insumos devueltos');
 }
 
 function escapeHtml(s){
