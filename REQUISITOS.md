@@ -93,10 +93,25 @@ Dos pestañas:
 - Se elige el insumo de una lista; el campo de cantidad se adapta a su unidad
   (elote → piezas, mayonesa → gramos).
 - Al guardar, **aumenta el stock de ese insumo** y queda el gasto registrado.
+- Cada compra actualiza el **costo por unidad** del insumo (monto ÷ cantidad).
+- Se pueden **editar** (ajusta la diferencia de existencia y recalcula el costo)
+  y **cancelar** (resta la cantidad del inventario).
+- El historial en pantalla muestra **solo las compras de hoy**, con el total del día.
+  El historial completo está en Resumen → Día por día.
+
+### Cómo se evitan las compras huérfanas
+Una compra "huérfana" es un gasto registrado contra un insumo que ya no existe:
+el dinero está contado pero no le suma existencia a nada. Tres candados:
+1. El selector abre en **"— Elige un insumo —"**. Antes, al filtrar, el navegador
+   preseleccionaba el primero de la lista y se podía registrar la compra contra
+   un insumo distinto al buscado sin notarlo.
+2. Si buscan un insumo que no existe, aparece un botón para **darlo de alta ahí mismo**.
+3. Al **borrar un insumo** se avisa cuántas compras tiene y qué productos lo usan.
 
 ### Resumen
-Arriba, botones de rango: **Hoy / 7 días / 30 días / Todo**. Todo lo de abajo
-responde al rango elegido.
+Arriba, botones de rango: **Hoy / Esta semana / Este mes / Todo**. Son periodos
+naturales, no rangos móviles: la semana va de lunes al día de hoy y el mes empieza
+el día 1. Así se puede comparar una semana contra otra o cerrar el mes.
 
 - Totales: vendido, gastado y ganancia (ventas − gastos).
 - **Valor de la merma** en pesos, como dato aparte. NO se resta de la ganancia:
@@ -149,7 +164,8 @@ Solo sobre **insumos** (los productos del menú no tienen existencia). Dos tipos
 - **Merma / pérdida** — se tiró o se echó a perder (resta del stock).
 - **Ajuste a favor** — había más de lo que marcaba el sistema (suma al stock).
 
-Ambos quedan registrados con fecha, cantidad y motivo.
+Ambos quedan registrados con fecha, cantidad y motivo, y traen botón **Deshacer**.
+En pantalla se ven **solo los del día**; el histórico está en Resumen.
 
 ## 5. Reglas de negocio acordadas
 

@@ -1064,9 +1064,14 @@ async function guardarAjuste(){
 function renderAjustes(){
   const list = document.getElementById('ajusteList');
   if(!list) return;
-  if(ajustes.length === 0){ list.innerHTML = '<div class="empty">Sin ajustes registrados todavía.</div>'; return; }
-  const sorted = [...ajustes].sort((a,b)=>b.ts-a.ts).slice(0,20);
-  list.innerHTML = sorted.map(a=>`
+  const hoy = todayStr();
+  const delDia = ajustes.filter(a=>a.fecha===hoy).sort((a,b)=>b.ts-a.ts);
+
+  if(delDia.length === 0){
+    list.innerHTML = '<div class="empty">Sin ajustes de hoy.</div>';
+    return;
+  }
+  list.innerHTML = delDia.map(a=>`
     <div class="list-row">
       <div class="list-main">
         <div class="list-title">${escapeHtml(a.productoNombre)}${a.motivo ? ' · '+escapeHtml(a.motivo) : ''}</div>
@@ -1225,6 +1230,26 @@ async function saveInsumo(){
 
 async function delInsumo(){
   if(!editingInsumoId) return;
+  const ins = insumos.find(x=>x.id===editingInsumoId);
+  if(!ins) return;
+
+  // Borrar un insumo con historial deja compras "huérfanas": gastos registrados
+  // que ya no le suman existencia a nada. Por eso se avisa antes.
+  const nCompras = compras.filter(c=>c.insumoId===editingInsumoId).length;
+  const enRecetas = productos.filter(p=>
+    (p.receta||[]).some(r=>r.insumoId===editingInsumoId) ||
+    (p.variantes && p.variantes.opciones.includes(editingInsumoId))
+  );
+
+  let aviso = `¿Eliminar "${ins.nombre}"?`;
+  if(nCompras > 0 || enRecetas.length > 0){
+    aviso += '\n\nOJO:';
+    if(nCompras > 0) aviso += `\n• Tiene ${nCompras} compra(s) registrada(s). Ese gasto quedará sin insumo al cual pertenecer.`;
+    if(enRecetas.length > 0) aviso += `\n• Lo usan ${enRecetas.length} producto(s): ${enRecetas.slice(0,4).map(p=>p.nombre).join(', ')}${enRecetas.length>4?'...':''}. Dejarán de descontarlo al venderse.`;
+    aviso += '\n\nSi solo se escribió mal el nombre, mejor edítalo en vez de borrarlo.';
+  }
+  if(!confirm(aviso)) return;
+
   insumos = insumos.filter(x=>x.id!==editingInsumoId);
   await saveInsumos();
   document.getElementById('insumoModalBg').classList.remove('show');
@@ -1249,7 +1274,11 @@ function llenarSelectInsumos(selectId, filtro){
     sel.innerHTML = '<option value="">Ningún insumo coincide</option>';
     return;
   }
-  sel.innerHTML = lista.map(i=>`<option value="${i.id}">${escapeHtml(i.nombre)} (${UNIDAD_LABEL[i.unidad]||i.unidad})</option>`).join('');
+  // La primera opción va vacía a propósito: si el navegador preseleccionara el
+  // primer insumo de la lista, al filtrar se podría registrar la compra contra
+  // un insumo distinto al que se buscaba, sin que nadie lo note.
+  sel.innerHTML = '<option value="">— Elige un insumo —</option>' +
+    lista.map(i=>`<option value="${i.id}">${escapeHtml(i.nombre)} (${UNIDAD_LABEL[i.unidad]||i.unidad})</option>`).join('');
   if(lista.some(i=>i.id===previo)) sel.value = previo;
 }
 
@@ -1261,8 +1290,32 @@ function renderInsumoSelect(){
 }
 
 function buscarInsumoCompra(){
-  llenarSelectInsumos('compraInsumoSelect', document.getElementById('compraBuscar').value);
+  const txt = document.getElementById('compraBuscar').value;
+  llenarSelectInsumos('compraInsumoSelect', txt);
   actualizarUnidadCompra();
+
+  // Si buscaron algo que no existe, se ofrece darlo de alta en vez de dejarlos atorados
+  const aviso = document.getElementById('compraSinResultado');
+  if(!aviso) return;
+  const hay = insumos.some(i => i.nombre.toLowerCase().includes(txt.toLowerCase()));
+  if(txt.trim() && !hay){
+    aviso.innerHTML = `
+      <div class="alerta alerta-amarilla">
+        No existe ningún insumo con ese nombre. Hay que darlo de alta antes de registrar su compra.
+        <button class="btn btn-green btn-sm" style="margin-top:8px;" onclick="crearInsumoDesdeCompra()">
+          Agregar "${escapeHtml(txt.trim())}" como insumo
+        </button>
+      </div>`;
+  }else{
+    aviso.innerHTML = '';
+  }
+}
+
+// Abre el alta de insumo con el nombre ya escrito, desde la pantalla de Compras
+function crearInsumoDesdeCompra(){
+  const txt = document.getElementById('compraBuscar').value.trim();
+  openNewInsumo();
+  document.getElementById('iNombre').value = txt;
 }
 function buscarInsumoReceta(){
   llenarSelectInsumos('recetaInsumoSelect', document.getElementById('recetaBuscar').value);
@@ -1321,17 +1374,78 @@ async function addCompra(){
 
 function renderCompras(){
   const list = document.getElementById('compraList');
-  if(compras.length === 0){ list.innerHTML = '<div class="empty">Sin compras registradas todavía.</div>'; return; }
-  const sorted = [...compras].sort((a,b)=>b.ts-a.ts).slice(0,30);
-  list.innerHTML = sorted.map(c=>`
+  const hoy = todayStr();
+  const delDia = compras.filter(c=>c.fecha===hoy).sort((a,b)=>b.ts-a.ts);
+
+  if(delDia.length === 0){
+    list.innerHTML = '<div class="empty">Todavía no hay compras de hoy.</div>';
+    return;
+  }
+  const totalDia = delDia.reduce((s,c)=>s+c.monto,0);
+  list.innerHTML = delDia.map(c=>`
     <div class="list-row">
       <div class="list-main">
-        <div class="list-title">${escapeHtml(c.insumoNombre || c.desc || '')}${c.cantidad?' · '+c.cantidad+' '+(UNIDAD_LABEL[c.unidad]||c.unidad||''):''}</div>
-        <div class="list-sub">${c.fecha}</div>
+        <div class="list-title">${escapeHtml(c.insumoNombre || c.desc || '')}</div>
+        <div class="list-sub">${c.cantidad ? c.cantidad+' '+(UNIDAD_LABEL[c.unidad]||c.unidad||'') : ''}</div>
       </div>
       <div class="pill">${fmt(c.monto)}</div>
+      <div style="display:flex; flex-direction:column; gap:5px;">
+        <button class="btn btn-ghost btn-sm" onclick="abrirEditarCompra('${c.id}')">Editar</button>
+        <button class="btn btn-ghost btn-sm" onclick="cancelarCompra('${c.id}')">Cancelar</button>
+      </div>
     </div>
-  `).join('');
+  `).join('') + `<div class="cart-total" style="margin-top:10px;"><span>Total de hoy</span><span>${fmt(totalDia)}</span></div>`;
+}
+
+// ---------- EDITAR / CANCELAR COMPRAS ----------
+let compraEditandoId = null;
+
+function abrirEditarCompra(compraId){
+  const c = compras.find(x=>x.id===compraId);
+  if(!c) return;
+  compraEditandoId = compraId;
+  document.getElementById('editCompraNombre').textContent = c.insumoNombre || '';
+  document.getElementById('editCompraUnidad').textContent =
+    'Cantidad (' + (UNIDAD_LABEL[c.unidad]||c.unidad||'') + ')';
+  document.getElementById('editCompraCantidad').value = c.cantidad;
+  document.getElementById('editCompraMonto').value = c.monto;
+  document.getElementById('editCompraModalBg').classList.add('show');
+}
+
+async function guardarEdicionCompra(){
+  const c = compras.find(x=>x.id===compraEditandoId);
+  if(!c) return;
+  const cantidad = parseFloat(document.getElementById('editCompraCantidad').value) || 0;
+  const monto = parseFloat(document.getElementById('editCompraMonto').value) || 0;
+  if(cantidad<=0 || monto<=0){ showToast('Falta la cantidad o el monto'); return; }
+
+  const ins = insumos.find(x=>x.id===c.insumoId);
+  if(ins){
+    ins.stock += (cantidad - c.cantidad);   // solo se ajusta la diferencia
+    ins.costoUnitario = monto / cantidad;   // el costo se recalcula
+  }
+  c.cantidad = cantidad;
+  c.monto = monto;
+
+  await docRef.set({insumos, compras}, {merge:true});
+  document.getElementById('editCompraModalBg').classList.remove('show');
+  renderAll();
+  showToast('Compra corregida');
+}
+
+async function cancelarCompra(compraId){
+  const c = compras.find(x=>x.id===compraId);
+  if(!c) return;
+  const ins = insumos.find(x=>x.id===c.insumoId);
+  const unidad = UNIDAD_LABEL[c.unidad]||c.unidad||'';
+  if(!confirm(`¿Cancelar esta compra?\n\n${c.insumoNombre}\n${c.cantidad} ${unidad} por ${fmt(c.monto)}\n\n` +
+              (ins ? `Se restarán ${c.cantidad} ${unidad} de la existencia.` : 'Ese insumo ya no existe.'))) return;
+
+  if(ins) ins.stock -= c.cantidad;
+  compras = compras.filter(x=>x.id!==compraId);
+  await docRef.set({insumos, compras}, {merge:true});
+  renderAll();
+  showToast('Compra cancelada');
 }
 
 
@@ -1451,11 +1565,17 @@ function toggleDia(fecha){
   renderResumen();
 }
 
-// Fecha (YYYY-MM-DD) desde la que cuenta el rango elegido
+// Fecha (YYYY-MM-DD) desde la que cuenta el rango elegido.
+// "semana" es la semana en curso (de lunes a hoy) y "mes" el mes en curso,
+// no los últimos 7 o 30 días: así se puede comparar una semana contra otra.
 function inicioDelRango(){
   const d = new Date();
-  if(rangoResumen === 'semana') d.setDate(d.getDate() - 6);   // hoy + 6 días atrás
-  else if(rangoResumen === 'mes') d.setDate(d.getDate() - 29);
+  if(rangoResumen === 'semana'){
+    const dow = d.getDay();                 // 0=domingo, 1=lunes...
+    const diasDesdeLunes = (dow + 6) % 7;   // lunes=0, domingo=6
+    d.setDate(d.getDate() - diasDesdeLunes);
+  }
+  else if(rangoResumen === 'mes') d.setDate(1);
   else if(rangoResumen === 'todo') return '0000-00-00';
   const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dia=String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dia}`;
@@ -1483,7 +1603,7 @@ function renderResumen(){
   // --- Botones de rango ---
   const cont = document.getElementById('rangoBtns');
   if(cont){
-    const opciones = [['hoy','Hoy'],['semana','7 días'],['mes','30 días'],['todo','Todo']];
+    const opciones = [['hoy','Hoy'],['semana','Esta semana'],['mes','Este mes'],['todo','Todo']];
     cont.innerHTML = opciones.map(([val,txt])=>
       `<button class="btn btn-sm ${rangoResumen===val?'btn-chili':'btn-ghost'}" style="flex:1;"
         onclick="setRango('${val}')">${txt}</button>`).join('');
@@ -1630,6 +1750,8 @@ document.getElementById('cobrarBtn').addEventListener('click', abrirCobro);
 document.getElementById('confirmarCobroBtn').addEventListener('click', cobrarVenta);
 document.getElementById('cobroPago').addEventListener('input', calcularCambio);
 document.getElementById('guardarEdicionVentaBtn').addEventListener('click', guardarEdicionVenta);
+document.getElementById('guardarEdicionCompraBtn').addEventListener('click', guardarEdicionCompra);
+document.getElementById('closeEditCompraModal').addEventListener('click', ()=>document.getElementById('editCompraModalBg').classList.remove('show'));
 document.getElementById('closeEditVentaModal').addEventListener('click', ()=>document.getElementById('editVentaModalBg').classList.remove('show'));
 document.getElementById('closeCobroModal').addEventListener('click', ()=>document.getElementById('cobroModalBg').classList.remove('show'));
 document.getElementById('addProdBtn').addEventListener('click', openNewProd);
