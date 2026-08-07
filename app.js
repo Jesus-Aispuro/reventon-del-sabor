@@ -788,6 +788,7 @@ function openNewProd(){
   llenarSelectInsumos('varOpcionSelect','');
   renderRecetaEditor();
   renderVariantesEditor();
+  reiniciarSeccionesProd();
   document.getElementById('modalBg').classList.add('show');
 }
 
@@ -808,7 +809,36 @@ function openEditProd(id){
   llenarSelectInsumos('varOpcionSelect','');
   renderRecetaEditor();
   renderVariantesEditor();
+  reiniciarSeccionesProd();
   document.getElementById('modalBg').classList.add('show');
+}
+
+// Secciones plegables del editor de producto (para que no sea un scroll larguísimo)
+function toggleSeccionProd(id){
+  const body = document.getElementById(id);
+  const chev = document.getElementById('chev' + id.charAt(0).toUpperCase() + id.slice(1));
+  const abierto = body.style.display !== 'none';
+  body.style.display = abierto ? 'none' : 'block';
+  if(chev) chev.textContent = abierto ? '▸' : '▾';
+}
+
+// Deja el editor con solo la primera sección abierta
+function reiniciarSeccionesProd(){
+  [['secDatos', true], ['secReceta', false], ['secVariantes', false]].forEach(([id, abierto])=>{
+    const body = document.getElementById(id);
+    const chev = document.getElementById('chev' + id.charAt(0).toUpperCase() + id.slice(1));
+    if(body) body.style.display = abierto ? 'block' : 'none';
+    if(chev) chev.textContent = abierto ? '▾' : '▸';
+  });
+}
+
+// Etiquetas de resumen en los encabezados, para saber qué hay dentro sin abrir
+function actualizarBadgesProd(){
+  const bR = document.getElementById('badgeReceta');
+  const bV = document.getElementById('badgeVariantes');
+  if(bR) bR.textContent = recetaTemp.length ? recetaTemp.length + ' insumos' : 'vacía';
+  if(bV) bV.textContent = (variantesTemp && variantesTemp.opciones.length > 1)
+    ? variantesTemp.opciones.length + ' opciones' : 'ninguna';
 }
 
 function renderRecetaEditor(){
@@ -837,6 +867,7 @@ function renderRecetaEditor(){
   }
   renderCostoCalculado();
   renderVarBaseSelect();
+  actualizarBadgesProd();
 }
 
 // Muestra cuánto cuesta preparar el producto según la receta que se está editando
@@ -890,6 +921,7 @@ function quitarIngrediente(idx){
   if(variantesTemp && quitado && variantesTemp.insumoBase === quitado.insumoId) variantesTemp = null;
   renderRecetaEditor();
   renderVariantesEditor();
+  actualizarBadgesProd();
 }
 
 // ---------- Editor de variantes ----------
@@ -1303,34 +1335,106 @@ function renderCompras(){
 }
 
 
-// ---------- RECUPERACIÓN ----------
-// Recupera insumos a partir del historial de compras: si en algún momento se
-// compró un insumo que hoy ya no está en el catálogo, lo vuelve a crear.
-// Sirve para rescatar el catálogo si se perdió pero el historial sobrevivió.
-async function reconstruirInsumosDesdeCompras(){
-  const existentes = new Set(insumos.map(i=>i.id));
-  const nuevos = [];
-  const vistos = new Set();
-  compras.forEach(c=>{
-    if(!c.insumoId || existentes.has(c.insumoId) || vistos.has(c.insumoId)) return;
-    vistos.add(c.insumoId);
-    nuevos.push({
-      id: c.insumoId,
-      nombre: c.insumoNombre || 'Insumo recuperado',
-      categoria: 'Abarrotes y empaquetados', // hay que reacomodarlo a mano
-      unidad: c.unidad || 'pieza',
-      stock: 0                                // hay que contarlo y ajustarlo
-    });
-  });
-  if(nuevos.length === 0){ showToast('No hay insumos que recuperar'); return; }
-  if(!confirm(`Se recuperarán ${nuevos.length} insumo(s) del historial de compras:\n\n` +
-              nuevos.map(n=>'• '+n.nombre).join('\n') +
-              `\n\nQuedarán en existencia 0 y en la categoría "Abarrotes y empaquetados"; ` +
-              `hay que corregirlos a mano.\n\n¿Continuar?`)) return;
-  insumos = insumos.concat(nuevos);
-  await saveInsumos();
+// ---------- EDITAR UNA VENTA ----------
+// Para corregir una venta mal capturada sin tener que cancelarla y rehacerla.
+let ventaEditandoId = null;
+let itemsEdit = [];
+
+function abrirEditarVenta(ventaId){
+  const v = ventas.find(x=>x.id===ventaId);
+  if(!v) return;
+  ventaEditandoId = ventaId;
+  itemsEdit = JSON.parse(JSON.stringify(v.items));
+  document.getElementById('editVentaFecha').textContent = fechaBonita(v.fecha);
+  renderEditarVenta();
+  document.getElementById('editVentaModalBg').classList.add('show');
+}
+
+function cambiarCantidadEdit(idx, delta){
+  const it = itemsEdit[idx];
+  if(!it) return;
+  it.cantidad += delta;
+  if(it.cantidad <= 0) itemsEdit.splice(idx,1);
+  renderEditarVenta();
+}
+
+function renderEditarVenta(){
+  const list = document.getElementById('editVentaList');
+  const total = itemsEdit.reduce((s,i)=>s + i.precioUnit * i.cantidad, 0);
+
+  if(itemsEdit.length === 0){
+    list.innerHTML = '<div class="empty" style="padding:14px 0;">Sin productos. Si guardas así, la venta se cancela por completo.</div>';
+  }else{
+    list.innerHTML = itemsEdit.map((it,idx)=>`
+      <div class="cart-row">
+        <div>
+          <div class="list-title">${escapeHtml(it.nombre)}</div>
+          <div class="list-sub">${fmt(it.precioUnit)} c/u</div>
+        </div>
+        <div class="qty-ctrl">
+          <button onclick="cambiarCantidadEdit(${idx},-1)">−</button>
+          <span>${it.cantidad}</span>
+          <button onclick="cambiarCantidadEdit(${idx},1)">+</button>
+        </div>
+      </div>`).join('');
+  }
+  document.getElementById('editVentaTotal').textContent = fmt(total);
+}
+
+async function guardarEdicionVenta(){
+  const v = ventas.find(x=>x.id===ventaEditandoId);
+  if(!v) return;
+
+  if(itemsEdit.length === 0){
+    if(!confirm('La venta quedó sin productos. ¿Cancelarla por completo?')) return;
+    moverInsumosPorItems(v.items, +1);          // devolver todo
+    ventas = ventas.filter(x=>x.id!==ventaEditandoId);
+  }else{
+    // Se devuelve lo que consumía antes y se descuenta lo que consume ahora
+    moverInsumosPorItems(v.items, +1);
+    moverInsumosPorItems(itemsEdit, -1);
+    v.items = itemsEdit;
+    v.total = itemsEdit.reduce((s,i)=>s + i.precioUnit * i.cantidad, 0);
+    if(v.pago !== undefined) v.cambio = v.pago - v.total;   // recalcular el cambio
+  }
+
+  await docRef.set({ventas, insumos}, {merge:true});
+  document.getElementById('editVentaModalBg').classList.remove('show');
   renderAll();
-  showToast(nuevos.length + ' insumo(s) recuperados');
+  showToast(itemsEdit.length === 0 ? 'Venta cancelada' : 'Venta corregida');
+}
+
+// Ranking de lo más vendido en el rango elegido
+function renderTopProductos(vR){
+  const box = document.getElementById('topProductos');
+  if(!box) return;
+
+  const acum = {};
+  vR.forEach(v=>v.items.forEach(i=>{
+    // Se agrupa por producto, juntando sus variantes (todos los Tostilocos suman igual)
+    const p = productos.find(x=>x.id===i.productoId);
+    const nombre = p ? p.nombre : i.nombre.replace(/\s*\(.*\)$/,'');
+    if(!acum[nombre]) acum[nombre] = {cantidad:0, importe:0};
+    acum[nombre].cantidad += i.cantidad;
+    acum[nombre].importe  += i.precioUnit * i.cantidad;
+  }));
+
+  const lista = Object.entries(acum).sort((a,b)=>b[1].importe - a[1].importe);
+  if(lista.length === 0){ box.innerHTML = '<div class="empty">Sin ventas en este periodo.</div>'; return; }
+
+  const maxImporte = lista[0][1].importe;
+  box.innerHTML = lista.slice(0,10).map(([nombre,dat],idx)=>`
+    <div class="top-fila">
+      <div class="top-pos">${idx+1}</div>
+      <div class="top-main">
+        <div class="top-nombre">${escapeHtml(nombre)}</div>
+        <div class="top-barra"><span style="width:${Math.round(dat.importe/maxImporte*100)}%"></span></div>
+      </div>
+      <div class="top-datos">
+        <div class="top-importe">${fmt(dat.importe)}</div>
+        <div class="list-sub">${dat.cantidad} vendidos</div>
+      </div>
+    </div>`).join('');
 }
 
 // ---------- RESUMEN ----------
@@ -1401,6 +1505,8 @@ function renderResumen(){
   document.getElementById('statMermaCount').textContent =
     mR.length + (mR.length===1 ? ' merma registrada' : ' mermas registradas');
 
+  renderTopProductos(vR);
+
   // --- Desglose día por día ---
   const dias = {};
   const meter = (fecha, tipo, obj) => {
@@ -1436,7 +1542,10 @@ function renderResumen(){
                 <div class="list-title">${v.items.map(i=>i.cantidad+'x '+escapeHtml(i.nombre)).join(', ')}</div>
               </div>
               <div class="pill">${fmt(v.total)}</div>
-              <button class="btn btn-ghost btn-sm" onclick="cancelarVenta('${v.id}')">Cancelar</button>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <button class="btn btn-ghost btn-sm" onclick="abrirEditarVenta('${v.id}')">Editar</button>
+                <button class="btn btn-ghost btn-sm" onclick="cancelarVenta('${v.id}')">Cancelar</button>
+              </div>
             </div>`).join('')}
         </div>` : ''}
 
@@ -1520,6 +1629,8 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 document.getElementById('cobrarBtn').addEventListener('click', abrirCobro);
 document.getElementById('confirmarCobroBtn').addEventListener('click', cobrarVenta);
 document.getElementById('cobroPago').addEventListener('input', calcularCambio);
+document.getElementById('guardarEdicionVentaBtn').addEventListener('click', guardarEdicionVenta);
+document.getElementById('closeEditVentaModal').addEventListener('click', ()=>document.getElementById('editVentaModalBg').classList.remove('show'));
 document.getElementById('closeCobroModal').addEventListener('click', ()=>document.getElementById('cobroModalBg').classList.remove('show'));
 document.getElementById('addProdBtn').addEventListener('click', openNewProd);
 document.getElementById('saveProdBtn').addEventListener('click', saveProd);
@@ -1540,7 +1651,6 @@ document.getElementById('agregarIngredienteBtn').addEventListener('click', agreg
 document.getElementById('pPrecio').addEventListener('input', renderCostoCalculado);
 document.getElementById('agregarOpcionVarBtn').addEventListener('click', agregarOpcionVariante);
 document.getElementById('closeVarianteModal').addEventListener('click', ()=>document.getElementById('varianteModalBg').classList.remove('show'));
-document.getElementById('reconstruirBtn').addEventListener('click', reconstruirInsumosDesdeCompras);
 
 document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
 

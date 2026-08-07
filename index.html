@@ -6,7 +6,7 @@
 <title>El Reventón del Sabor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="estilos.css?v=13">
+<link rel="stylesheet" href="estilos.css?v=14">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
@@ -117,19 +117,17 @@
     </div>
 
     <div class="card">
+      <h2>Lo que más se vende</h2>
+      <div id="topProductos"></div>
+    </div>
+
+    <div class="card">
       <h2>Día por día</h2>
       <div class="list-sub" style="margin-bottom:10px;">Toca un día para ver el detalle.</div>
       <div id="diasWrap"></div>
     </div>
 
-    <div class="card">
-      <h2>Recuperar insumos</h2>
-      <div class="list-sub" style="margin-bottom:10px;">
-        Si se perdieron insumos pero el historial de compras sigue ahí, esto los vuelve a crear.
-      </div>
-      <button class="btn btn-ghost" style="width:100%;" id="reconstruirBtn">Recuperar insumos desde compras</button>
-    </div>
-  </section>
+</section>
 
 </main>
 
@@ -159,47 +157,82 @@
   <div class="modal">
     <button class="close-x" id="closeModal">×</button>
     <h3 id="modalTitle">Nuevo producto</h3>
-    <label>Nombre</label>
-    <input type="text" id="pNombre" placeholder="Ej: Elote con todo">
-    <label>Categoría</label>
-    <input type="text" id="pCategoria" list="catList" placeholder="Ej: Bebidas, Antojitos...">
-    <datalist id="catList"></datalist>
-    <label>Precio de venta</label>
-    <input type="number" id="pPrecio" placeholder="$0" inputmode="decimal">
-    <label>Receta (insumos que lleva este producto)</label>
-    <div id="recetaList" style="margin-bottom:10px;"></div>
-    <input type="search" id="recetaBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoReceta()">
-    <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px;">
-      <div style="flex:1;">
-        <select id="recetaInsumoSelect" style="margin-bottom:0;"></select>
-      </div>
-      <div style="width:90px;">
-        <input type="number" id="recetaCantidad" placeholder="Cant." inputmode="decimal" style="margin-bottom:0;">
-      </div>
-      <button class="btn btn-green btn-sm" id="agregarIngredienteBtn" type="button">+</button>
+
+    <!-- Sección 1: datos básicos -->
+    <button class="sec-header" onclick="toggleSeccionProd('secDatos')">
+      <span>Datos del producto</span><span class="sec-chevron" id="chevSecDatos">▾</span>
+    </button>
+    <div class="sec-body" id="secDatos">
+      <label>Nombre</label>
+      <input type="text" id="pNombre" placeholder="Ej: Elote con todo">
+      <label>Categoría</label>
+      <input type="text" id="pCategoria" list="catList" placeholder="Ej: Elotes, Botanas, Bebidas...">
+      <datalist id="catList"></datalist>
+      <label>Precio de venta</label>
+      <input type="number" id="pPrecio" placeholder="$0" inputmode="decimal">
     </div>
 
-    <div id="costoCalculado"></div>
-
-    <label>Variantes (opcional)</label>
-    <div class="list-sub" style="margin-bottom:6px;">
-      Sirve para vender el mismo producto con distintas botanas sin crear uno por cada una.
-      Elige qué insumo cambia y luego agrega las alternativas.
-    </div>
-    <select id="varBaseSelect" onchange="cambiarVarBase()"></select>
-    <div id="varOpcionesBox" style="display:none;">
-      <div id="varOpcionesList" style="margin-bottom:10px;"></div>
-      <input type="search" id="varOpcionBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoVariante()">
+    <!-- Sección 2: receta -->
+    <button class="sec-header" onclick="toggleSeccionProd('secReceta')">
+      <span>Receta <span class="sec-badge" id="badgeReceta"></span></span>
+      <span class="sec-chevron" id="chevSecReceta">▸</span>
+    </button>
+    <div class="sec-body" id="secReceta" style="display:none;">
+      <div class="list-sub" style="margin-bottom:8px;">Insumos que se descuentan al vender este producto.</div>
+      <div id="recetaList" style="margin-bottom:10px;"></div>
+      <input type="search" id="recetaBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoReceta()">
       <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px;">
         <div style="flex:1;">
-          <select id="varOpcionSelect" style="margin-bottom:0;"></select>
+          <select id="recetaInsumoSelect" style="margin-bottom:0;"></select>
         </div>
-        <button class="btn btn-green btn-sm" id="agregarOpcionVarBtn" type="button">+</button>
+        <div style="width:90px;">
+          <input type="number" id="recetaCantidad" placeholder="Cant." inputmode="decimal" style="margin-bottom:0;">
+        </div>
+        <button class="btn btn-green btn-sm" id="agregarIngredienteBtn" type="button">+</button>
+      </div>
+      <div id="costoCalculado"></div>
+    </div>
+
+    <!-- Sección 3: variantes -->
+    <button class="sec-header" onclick="toggleSeccionProd('secVariantes')">
+      <span>Variantes <span class="sec-badge" id="badgeVariantes"></span></span>
+      <span class="sec-chevron" id="chevSecVariantes">▸</span>
+    </button>
+    <div class="sec-body" id="secVariantes" style="display:none;">
+      <div class="list-sub" style="margin-bottom:8px;">
+        Para vender el mismo producto con distintas botanas sin crear uno por cada una.
+        Elige qué insumo cambia y agrega las alternativas.
+      </div>
+      <select id="varBaseSelect" onchange="cambiarVarBase()"></select>
+      <div id="varOpcionesBox" style="display:none;">
+        <div id="varOpcionesList" style="margin-bottom:10px;"></div>
+        <input type="search" id="varOpcionBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoVariante()">
+        <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px;">
+          <div style="flex:1;">
+            <select id="varOpcionSelect" style="margin-bottom:0;"></select>
+          </div>
+          <button class="btn btn-green btn-sm" id="agregarOpcionVarBtn" type="button">+</button>
+        </div>
       </div>
     </div>
 
-    <button class="btn btn-green" id="saveProdBtn" style="margin-top:6px;">Guardar</button>
+    <button class="btn btn-green" id="saveProdBtn" style="margin-top:14px;">Guardar</button>
     <button class="del-link" id="delProdBtn" style="margin-top:10px;">Eliminar producto</button>
+  </div>
+</div>
+
+<!-- Modal para editar una venta ya registrada -->
+<div class="modal-bg" id="editVentaModalBg">
+  <div class="modal">
+    <button class="close-x" id="closeEditVentaModal">×</button>
+    <h3>Corregir venta</h3>
+    <div class="list-sub" style="margin-bottom:12px;" id="editVentaFecha"></div>
+    <div id="editVentaList"></div>
+    <div class="cobro-total" style="margin-top:12px;">
+      <span>Nuevo total</span><strong id="editVentaTotal">$0</strong>
+    </div>
+    <div class="list-sub" style="margin-bottom:10px;">Los insumos se ajustan solos a la nueva cantidad.</div>
+    <button class="btn btn-chili" id="guardarEdicionVentaBtn">Guardar cambios</button>
   </div>
 </div>
 
@@ -279,9 +312,9 @@
   </div>
 </div>
 
-<!-- El ?v=13 obliga al navegador a bajar la versión nueva en vez de usar la guardada
+<!-- El ?v=14 obliga al navegador a bajar la versión nueva en vez de usar la guardada
      en caché. IMPORTANTE: cada vez que cambies app.js o estilos.css, sube el número
      (v=7, v=8, ...) aquí y en la línea del estilos.css de arriba. -->
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

@@ -102,8 +102,30 @@ responde al rango elegido.
 - **Valor de la merma** en pesos, como dato aparte. NO se resta de la ganancia:
   el costo de esos insumos ya está contado en los gastos cuando se compraron;
   restarlo otra vez sería contarlo doble.
+- **Lo que más se vende**: ranking por importe dentro del rango. Las variantes se
+  suman al producto base (todos los Tostilocos cuentan juntos).
 - **Día por día**: una tarjeta por día con lo vendido, gastado y mermado. Al tocarla
-  se despliegan las ventas (con su botón Cancelar), las compras y las mermas de ese día.
+  se despliegan las ventas, las compras y las mermas de ese día.
+
+### Corregir movimientos
+- **Ventas**: botón *Editar* para cambiar cantidades (los insumos se reajustan solos)
+  o *Cancelar* para borrarla y devolver todo.
+- **Mermas y ajustes**: botón *Deshacer* en el historial; devuelve la existencia
+  como estaba. Para corregir una cantidad: deshacer y volver a registrar.
+
+### Cobro
+Al dar Cobrar aparece el total en grande, botones rápidos de billete y el cambio
+calculado. El pago es opcional. Cada venta guarda con cuánto pagaron y el cambio.
+
+### Avisos de insumo
+En la pantalla de Vender: franja roja con lo agotado y amarilla con lo que está por
+acabarse. El aviso amarillo requiere ponerle un mínimo al insumo. Solo avisa de
+insumos usados en alguna receta.
+
+### Costo y margen de cada producto
+El costo ya no se captura a mano: se calcula sumando el costo de los insumos de la
+receta. En la lista del menú se ve *"cuesta $X · deja $Y (Z%)"*. Los productos con
+variantes muestran un rango, porque cambia según la botana.
 
 ### Costo de los insumos y valor de la merma
 Cada insumo tiene un **costo por unidad**:
