@@ -221,3 +221,43 @@ label{font-size:12.5px; font-weight:700; color:var(--muted); display:block; marg
   color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;
   padding-bottom:4px; border-bottom:2px solid var(--line); margin-bottom:2px;
 }
+
+/* Costo calculado del producto (editor de menú) */
+.costo-box{
+  background:var(--cream); border-radius:14px;
+  padding:12px 14px; margin:4px 0 14px;
+}
+.costo-linea{
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-size:13.5px; padding:3px 0;
+}
+.costo-linea strong{font-family:'Fredoka',sans-serif; font-weight:600; font-size:15px;}
+.costo-margen{
+  border-top:2px dashed var(--line); margin-top:6px; padding-top:8px;
+  color:var(--green-dark);
+}
+.costo-margen.negativo{color:var(--chili);}
+
+/* Avisos de insumo agotado o por agotarse (pantalla Vender) */
+.alerta{
+  border-radius:14px; padding:10px 14px; margin-bottom:10px;
+  font-size:13px; line-height:1.4;
+}
+.alerta strong{font-weight:800;}
+.alerta-roja{background:#FBEAE1; color:#8C2D16; border:1px solid #F0C4B6;}
+.alerta-amarilla{background:#FDF3D8; color:#7A5D0B; border:1px solid #EBD79A;}
+
+/* Cobro y cambio */
+.cobro-total{
+  display:flex; justify-content:space-between; align-items:baseline;
+  background:var(--cream); border-radius:14px; padding:14px 16px; margin-bottom:14px;
+}
+.cobro-total strong{font-family:'Fredoka',sans-serif; font-size:30px; font-weight:600;}
+.cambio-box{
+  display:flex; justify-content:space-between; align-items:baseline;
+  background:#EAF3E6; color:var(--green-dark);
+  border-radius:14px; padding:12px 16px; margin-bottom:10px;
+  font-weight:800; font-size:14px;
+}
+.cambio-box strong{font-family:'Fredoka',sans-serif; font-size:26px; font-weight:600;}
+.cambio-box.falta{background:#FBEAE1; color:var(--chili); justify-content:center; font-size:16px;}

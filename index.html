@@ -6,7 +6,7 @@
 <title>El Reventón del Sabor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="estilos.css?v=11">
+<link rel="stylesheet" href="estilos.css?v=13">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
@@ -24,6 +24,7 @@
 
   <!-- VENDER -->
   <section id="view-vender" class="view active">
+    <div id="alertasBox"></div>
     <div id="prodGrid"></div>
   </section>
 
@@ -165,9 +166,6 @@
     <datalist id="catList"></datalist>
     <label>Precio de venta</label>
     <input type="number" id="pPrecio" placeholder="$0" inputmode="decimal">
-    <label>Costo (lo que te cuesta hacerlo)</label>
-    <input type="number" id="pCosto" placeholder="$0" inputmode="decimal">
-
     <label>Receta (insumos que lleva este producto)</label>
     <div id="recetaList" style="margin-bottom:10px;"></div>
     <input type="search" id="recetaBuscar" placeholder="🔍 Buscar insumo..." oninput="buscarInsumoReceta()">
@@ -180,6 +178,8 @@
       </div>
       <button class="btn btn-green btn-sm" id="agregarIngredienteBtn" type="button">+</button>
     </div>
+
+    <div id="costoCalculado"></div>
 
     <label>Variantes (opcional)</label>
     <div class="list-sub" style="margin-bottom:6px;">
@@ -231,6 +231,23 @@
   </div>
 </div>
 
+<!-- Modal de cobro: total, pago y cambio -->
+<div class="modal-bg" id="cobroModalBg">
+  <div class="modal">
+    <button class="close-x" id="closeCobroModal">×</button>
+    <h3>Cobrar</h3>
+    <div class="cobro-total">
+      <span>Total</span>
+      <strong id="cobroTotal">$0</strong>
+    </div>
+    <label>¿Con cuánto paga? (opcional)</label>
+    <div id="cobroSugerencias" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>
+    <input type="number" id="cobroPago" placeholder="$0" inputmode="decimal">
+    <div id="cobroCambio"></div>
+    <button class="btn btn-chili" id="confirmarCobroBtn" style="margin-top:6px;">Confirmar venta</button>
+  </div>
+</div>
+
 <!-- Modal de insumo -->
 <div class="modal-bg" id="insumoModalBg">
   <div class="modal">
@@ -255,14 +272,16 @@
     <input type="number" id="iStock" placeholder="0" inputmode="decimal">
     <label>Costo por unidad (para valuar la merma)</label>
     <input type="number" id="iCosto" placeholder="Se calcula solo con cada compra" inputmode="decimal">
+    <label>Avisarme cuando queden menos de</label>
+    <input type="number" id="iMinimo" placeholder="Déjalo vacío para no avisar" inputmode="decimal">
     <button class="btn btn-green" id="saveInsumoBtn" style="margin-top:6px;">Guardar</button>
     <button class="del-link" id="delInsumoBtn" style="margin-top:10px;">Eliminar insumo</button>
   </div>
 </div>
 
-<!-- El ?v=11 obliga al navegador a bajar la versión nueva en vez de usar la guardada
+<!-- El ?v=13 obliga al navegador a bajar la versión nueva en vez de usar la guardada
      en caché. IMPORTANTE: cada vez que cambies app.js o estilos.css, sube el número
      (v=7, v=8, ...) aquí y en la línea del estilos.css de arriba. -->
-<script src="app.js?v=11"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

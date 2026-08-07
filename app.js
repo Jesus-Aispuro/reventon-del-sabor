@@ -366,6 +366,7 @@ function renderAll(){
   renderCompras();
   renderResumen();
   renderCatList();
+  renderAlertas();
   renderInsumoSelect();
 }
 
@@ -583,6 +584,49 @@ function moverInsumosPorItems(items, signo){
 
 function descontarInsumosPorVenta(items){ moverInsumosPorItems(items, -1); }
 
+// ---------- COBRO ----------
+// Antes de cerrar la venta se muestra el total y se calcula el cambio.
+let totalACobrar = 0;
+
+function abrirCobro(){
+  const claves = Object.keys(carrito);
+  if(claves.length === 0) return;
+  totalACobrar = claves.reduce((s,k)=>{
+    const it = carrito[k];
+    const p = productos.find(x=>x.id===it.productoId);
+    return s + (p ? p.precio * it.cantidad : 0);
+  },0);
+
+  document.getElementById('cobroTotal').textContent = fmt(totalACobrar);
+  document.getElementById('cobroPago').value = '';
+  document.getElementById('cobroCambio').innerHTML = '';
+
+  // Sugerencias de billetes: el exacto y los billetes comunes que alcanzan
+  const billetes = [50,100,200,500,1000].filter(b=>b > totalACobrar);
+  document.getElementById('cobroSugerencias').innerHTML =
+    `<button class="btn btn-ghost btn-sm" onclick="ponerPago(${totalACobrar})">Exacto</button>` +
+    billetes.slice(0,3).map(b=>`<button class="btn btn-ghost btn-sm" onclick="ponerPago(${b})">$${b}</button>`).join('');
+
+  document.getElementById('cobroModalBg').classList.add('show');
+}
+
+function ponerPago(monto){
+  document.getElementById('cobroPago').value = monto;
+  calcularCambio();
+}
+
+function calcularCambio(){
+  const pago = parseFloat(document.getElementById('cobroPago').value);
+  const box = document.getElementById('cobroCambio');
+  if(!pago && pago !== 0){ box.innerHTML = ''; return; }
+  const cambio = pago - totalACobrar;
+  if(cambio < 0){
+    box.innerHTML = `<div class="cambio-box falta">Faltan ${fmt(Math.abs(cambio))}</div>`;
+  }else{
+    box.innerHTML = `<div class="cambio-box">Cambio<strong>${fmt(cambio)}</strong></div>`;
+  }
+}
+
 async function cobrarVenta(){
   const claves = Object.keys(carrito);
   if(claves.length === 0) return;
@@ -599,7 +643,11 @@ async function cobrarVenta(){
       precioUnit: p.precio
     };
   });
-  ventas.push({id:uid(), fecha:todayStr(), ts:Date.now(), items, total});
+  const pago = parseFloat(document.getElementById('cobroPago').value);
+  const registro = {id:uid(), fecha:todayStr(), ts:Date.now(), items, total};
+  if(!isNaN(pago) && pago >= total){ registro.pago = pago; registro.cambio = pago - total; }
+  ventas.push(registro);
+  document.getElementById('cobroModalBg').classList.remove('show');
   descontarInsumosPorVenta(items); // descuenta insumos según receta, si ya está definida
   carrito = {};
   catState = {}; // cierra todas las categorías otra vez
@@ -611,6 +659,72 @@ async function cobrarVenta(){
 // ---------- INVENTARIO ----------
 let filtroMenu = '';
 function setFiltroMenu(v){ filtroMenu = (v||'').toLowerCase(); renderInventario(); }
+
+// Costo real de preparar un producto, sumando el costo de cada insumo de su receta.
+// Devuelve {costo, completo, faltantes}: "completo" es false si algún insumo
+// todavía no tiene costo, en cuyo caso el total mostrado se queda corto.
+function costoDeReceta(p, varianteId){
+  const receta = recetaEfectiva(p, varianteId);
+  let costo = 0;
+  const faltantes = [];
+  receta.forEach(r=>{
+    const ins = insumos.find(x=>x.id===r.insumoId);
+    if(!ins) return;
+    if(ins.costoUnitario === undefined || ins.costoUnitario === null){
+      faltantes.push(ins.nombre);
+    }else{
+      costo += ins.costoUnitario * r.cantidad;
+    }
+  });
+  return {costo, completo: faltantes.length === 0, faltantes};
+}
+
+// Con variantes, el costo cambia según la botana. Se reporta el rango.
+function costoProducto(p){
+  if(!tieneVariantes(p)) return costoDeReceta(p);
+  const calculos = p.variantes.opciones.map(id=>costoDeReceta(p, id));
+  const costos = calculos.map(c=>c.costo);
+  return {
+    costo: Math.min(...costos),
+    costoMax: Math.max(...costos),
+    completo: calculos.every(c=>c.completo),
+    faltantes: [...new Set(calculos.flatMap(c=>c.faltantes))]
+  };
+}
+
+// Insumos que ya se acabaron o están por acabarse.
+// "Por acabarse" solo aplica si le pusieron un mínimo en Inventario → Insumos.
+function insumosEnAlerta(){
+  const agotados = [], bajos = [];
+  insumos.forEach(i=>{
+    if(i.stock <= 0) agotados.push(i);
+    else if(i.minimo > 0 && i.stock <= i.minimo) bajos.push(i);
+  });
+  return {agotados, bajos};
+}
+
+function renderAlertas(){
+  const box = document.getElementById('alertasBox');
+  if(!box) return;
+  const {agotados, bajos} = insumosEnAlerta();
+
+  // Solo se avisa de lo que realmente se usa en alguna receta; si no, sería ruido
+  const usados = new Set(productos.flatMap(p=>(p.receta||[]).map(r=>r.insumoId))
+    .concat(productos.flatMap(p=>p.variantes ? p.variantes.opciones : [])));
+  const ag = agotados.filter(i=>usados.has(i.id));
+  const bj = bajos.filter(i=>usados.has(i.id));
+
+  if(ag.length === 0 && bj.length === 0){ box.innerHTML = ''; return; }
+
+  const nombres = arr => arr.map(i=>escapeHtml(i.nombre)).join(', ');
+  box.innerHTML = `
+    ${ag.length ? `<div class="alerta alerta-roja">
+      <strong>Se acabó:</strong> ${nombres(ag)}
+    </div>` : ''}
+    ${bj.length ? `<div class="alerta alerta-amarilla">
+      <strong>Ya casi se acaba:</strong> ${nombres(bj)}
+    </div>` : ''}`;
+}
 
 function renderInventario(){
   const list = document.getElementById('invList');
@@ -625,15 +739,34 @@ function renderInventario(){
     renderAjustes();
     return;
   }
-  list.innerHTML = visibles.map(p=>`
+  list.innerHTML = visibles.map(p=>{
+    const c = costoProducto(p);
+    const tieneReceta = p.receta && p.receta.length > 0;
+    const rango = c.costoMax !== undefined && c.costoMax > c.costo;
+    const margen = p.precio - c.costo;
+    const pct = p.precio > 0 ? Math.round(margen / p.precio * 100) : 0;
+
+    let linea;
+    if(!tieneReceta){
+      linea = '<span style="color:var(--chili);">sin receta</span>';
+    }else if(!c.completo && c.costo === 0){
+      linea = '<span style="color:var(--chili);">falta costo de insumos</span>';
+    }else{
+      linea = `cuesta ${fmt(c.costo)}${rango?' – '+fmt(c.costoMax):''}` +
+              (p.precio > 0 ? ` · deja ${fmt(margen)} (${pct}%)` : '') +
+              (c.completo ? '' : ' <span style="color:var(--chili);">(incompleto)</span>');
+    }
+
+    return `
     <div class="list-row">
       <div class="list-main">
         <div class="list-title">${escapeHtml(p.nombre)}${tieneVariantes(p)?' <span class="pill">'+p.variantes.opciones.length+' opciones</span>':''}</div>
-        <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Venta ${fmt(p.precio)} · Costo ${fmt(p.costo)} · ${(p.receta&&p.receta.length)?p.receta.length+' insumo(s)':'sin receta'}</div>
+        <div class="list-sub">${escapeHtml(p.categoria || 'Otros')} · Vende ${fmt(p.precio)}</div>
+        <div class="list-sub">${linea}</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="openEditProd('${p.id}')">Editar</button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   renderAjustes();
 }
 
@@ -646,7 +779,6 @@ function openNewProd(){
   document.getElementById('pNombre').value='';
   document.getElementById('pCategoria').value='';
   document.getElementById('pPrecio').value='';
-  document.getElementById('pCosto').value='';
   document.getElementById('delProdBtn').style.display='none';
   recetaTemp = [];
   variantesTemp = null;
@@ -667,7 +799,6 @@ function openEditProd(id){
   document.getElementById('pNombre').value=p.nombre;
   document.getElementById('pCategoria').value=p.categoria || '';
   document.getElementById('pPrecio').value=p.precio;
-  document.getElementById('pCosto').value=p.costo;
   document.getElementById('delProdBtn').style.display='inline-block';
   recetaTemp = JSON.parse(JSON.stringify(p.receta || []));
   variantesTemp = p.variantes ? JSON.parse(JSON.stringify(p.variantes)) : null;
@@ -690,8 +821,13 @@ function renderRecetaEditor(){
       const ins = insumos.find(x=>x.id===r.insumoId);
       const nombre = ins ? ins.nombre : '(insumo eliminado)';
       const unidad = ins ? (UNIDAD_LABEL[ins.unidad]||ins.unidad) : '';
+      const sinCosto = !ins || ins.costoUnitario === undefined || ins.costoUnitario === null;
+      const importe = sinCosto ? null : ins.costoUnitario * r.cantidad;
       return `<div class="cart-row">
-        <div class="list-title">${escapeHtml(nombre)}</div>
+        <div>
+          <div class="list-title">${escapeHtml(nombre)}</div>
+          <div class="list-sub">${sinCosto ? '<span style="color:var(--chili);">falta su costo</span>' : fmt(importe)}</div>
+        </div>
         <div class="qty-ctrl">
           <span>${r.cantidad} ${unidad}</span>
           <button onclick="quitarIngrediente(${idx})">×</button>
@@ -699,7 +835,40 @@ function renderRecetaEditor(){
       </div>`;
     }).join('');
   }
+  renderCostoCalculado();
   renderVarBaseSelect();
+}
+
+// Muestra cuánto cuesta preparar el producto según la receta que se está editando
+function renderCostoCalculado(){
+  const box = document.getElementById('costoCalculado');
+  if(!box) return;
+  if(recetaTemp.length === 0){ box.innerHTML = ''; return; }
+
+  const fake = {receta: recetaTemp, variantes: (variantesTemp && variantesTemp.opciones.length>1) ? variantesTemp : null};
+  const c = costoProducto(fake);
+  const precio = parseFloat(document.getElementById('pPrecio').value) || 0;
+  const rango = c.costoMax !== undefined && c.costoMax > c.costo;
+  const margen = precio - c.costo;
+  const pct = precio > 0 ? Math.round(margen/precio*100) : 0;
+
+  box.innerHTML = `
+    <div class="costo-box">
+      <div class="costo-linea">
+        <span>Cuesta prepararlo</span>
+        <strong>${fmt(c.costo)}${rango ? ' – '+fmt(c.costoMax) : ''}</strong>
+      </div>
+      ${precio > 0 ? `
+      <div class="costo-linea">
+        <span>Se vende en</span><strong>${fmt(precio)}</strong>
+      </div>
+      <div class="costo-linea costo-margen ${margen < 0 ? 'negativo' : ''}">
+        <span>Deja de ganancia</span><strong>${fmt(margen)} (${pct}%)</strong>
+      </div>` : '<div class="list-sub">Pon el precio de venta para ver la ganancia.</div>'}
+      ${!c.completo ? `<div class="list-sub" style="color:var(--chili); margin-top:6px;">
+        Falta el costo de: ${c.faltantes.map(escapeHtml).join(', ')}. El total real es mayor.
+      </div>` : ''}
+    </div>`;
 }
 
 function agregarIngrediente(){
@@ -781,7 +950,9 @@ async function saveProd(){
   const nombre = document.getElementById('pNombre').value.trim();
   const categoria = document.getElementById('pCategoria').value.trim() || 'Otros';
   const precio = parseFloat(document.getElementById('pPrecio').value)||0;
-  const costo = parseFloat(document.getElementById('pCosto').value)||0;
+  // El costo ya no se captura: se calcula desde la receta
+  const c = costoProducto({receta: recetaTemp, variantes: (variantesTemp && variantesTemp.opciones.length>1) ? variantesTemp : null});
+  const costo = c.costo;
   if(!nombre){ showToast('Ponle un nombre'); return; }
   // Si quedó una sola opción, no tiene sentido preguntar: se guarda sin variantes
   const variantes = (variantesTemp && variantesTemp.opciones.length > 1) ? variantesTemp : null;
@@ -867,11 +1038,35 @@ function renderAjustes(){
     <div class="list-row">
       <div class="list-main">
         <div class="list-title">${escapeHtml(a.productoNombre)}${a.motivo ? ' · '+escapeHtml(a.motivo) : ''}</div>
-        <div class="list-sub">${a.fecha} · ${a.tipo === 'perdida' ? 'Merma / pérdida' : 'Ajuste a favor'}</div>
+        <div class="list-sub">${a.fecha} · ${a.tipo === 'perdida' ? 'Merma / pérdida' : 'Ajuste a favor'}${a.valor ? ' · '+fmt(a.valor) : ''}</div>
       </div>
       <div class="pill" style="${a.tipo==='perdida'?'background:#FBEAE1;color:#D6482B;':'background:#EAF3E6;color:#4A6E40;'}">${a.tipo==='perdida'?'−':'+'}${a.cantidad}</div>
+      <button class="btn btn-ghost btn-sm" onclick="deshacerAjuste('${a.id}')">Deshacer</button>
     </div>
   `).join('');
+}
+
+// Deshace un ajuste: lo borra del historial y regresa el inventario como estaba.
+// Si se capturó mal la cantidad, se deshace y se vuelve a registrar bien.
+async function deshacerAjuste(ajusteId){
+  const a = ajustes.find(x=>x.id===ajusteId);
+  if(!a) return;
+  const item = a.tipoArticulo === 'insumo'
+    ? insumos.find(x=>x.id===a.productoId)
+    : productos.find(x=>x.id===a.productoId);
+
+  const texto = `${a.productoNombre}\n${a.tipo==='perdida'?'Merma':'Ajuste a favor'} de ${a.cantidad}` +
+                (a.motivo ? `\nMotivo: ${a.motivo}` : '');
+  if(!confirm(`¿Deshacer este ajuste?\n\n${texto}\n\n` +
+              (item ? 'La existencia volverá a como estaba.' : 'Ese artículo ya no existe; solo se borrará del historial.'))) return;
+
+  // Revertir el movimiento: si fue pérdida se suma, si fue ganancia se resta
+  if(item) item.stock += (a.tipo === 'perdida' ? a.cantidad : -a.cantidad);
+
+  ajustes = ajustes.filter(x=>x.id!==ajusteId);
+  await docRef.set({insumos, productos, ajustes}, {merge:true});
+  renderAll();
+  showToast('Ajuste deshecho');
 }
 
 // ---------- INSUMOS (catálogo, agrupado por categoría fija) ----------
@@ -949,6 +1144,7 @@ function openNewInsumo(){
   document.getElementById('iUnidad').value = 'pieza';
   document.getElementById('iStock').value = '';
   document.getElementById('iCosto').value = '';
+  document.getElementById('iMinimo').value = '';
   document.getElementById('delInsumoBtn').style.display = 'none';
   document.getElementById('insumoModalBg').classList.add('show');
 }
@@ -963,6 +1159,7 @@ function openEditInsumo(id){
   document.getElementById('iUnidad').value = i.unidad;
   document.getElementById('iStock').value = i.stock;
   document.getElementById('iCosto').value = i.costoUnitario !== undefined ? i.costoUnitario : '';
+  document.getElementById('iMinimo').value = i.minimo !== undefined ? i.minimo : '';
   document.getElementById('delInsumoBtn').style.display = 'inline-block';
   document.getElementById('insumoModalBg').classList.add('show');
 }
@@ -974,14 +1171,18 @@ async function saveInsumo(){
   const stock = parseFloat(document.getElementById('iStock').value) || 0;
   const costoTxt = document.getElementById('iCosto').value.trim();
   const costoUnitario = costoTxt === '' ? undefined : (parseFloat(costoTxt) || 0);
+  const minTxt = document.getElementById('iMinimo').value.trim();
+  const minimo = minTxt === '' ? undefined : (parseFloat(minTxt) || 0);
   if(!nombre){ showToast('Ponle un nombre'); return; }
   if(editingInsumoId){
     const i = insumos.find(x=>x.id===editingInsumoId);
     Object.assign(i, {nombre, categoria, unidad, stock});
     if(costoUnitario !== undefined) i.costoUnitario = costoUnitario;
+    if(minimo !== undefined) i.minimo = minimo;
   }else{
     const nuevo = {id:uid(), nombre, categoria, unidad, stock};
     if(costoUnitario !== undefined) nuevo.costoUnitario = costoUnitario;
+    if(minimo !== undefined) nuevo.minimo = minimo;
     insumos.push(nuevo);
   }
   await saveInsumos();
@@ -1316,7 +1517,10 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
   });
 });
 
-document.getElementById('cobrarBtn').addEventListener('click', cobrarVenta);
+document.getElementById('cobrarBtn').addEventListener('click', abrirCobro);
+document.getElementById('confirmarCobroBtn').addEventListener('click', cobrarVenta);
+document.getElementById('cobroPago').addEventListener('input', calcularCambio);
+document.getElementById('closeCobroModal').addEventListener('click', ()=>document.getElementById('cobroModalBg').classList.remove('show'));
 document.getElementById('addProdBtn').addEventListener('click', openNewProd);
 document.getElementById('saveProdBtn').addEventListener('click', saveProd);
 document.getElementById('delProdBtn').addEventListener('click', delProd);
@@ -1333,6 +1537,7 @@ document.getElementById('delInsumoBtn').addEventListener('click', delInsumo);
 document.getElementById('closeInsumoModal').addEventListener('click', ()=>document.getElementById('insumoModalBg').classList.remove('show'));
 document.getElementById('compraInsumoSelect').addEventListener('change', actualizarUnidadCompra);
 document.getElementById('agregarIngredienteBtn').addEventListener('click', agregarIngrediente);
+document.getElementById('pPrecio').addEventListener('input', renderCostoCalculado);
 document.getElementById('agregarOpcionVarBtn').addEventListener('click', agregarOpcionVariante);
 document.getElementById('closeVarianteModal').addEventListener('click', ()=>document.getElementById('varianteModalBg').classList.remove('show'));
 document.getElementById('reconstruirBtn').addEventListener('click', reconstruirInsumosDesdeCompras);
