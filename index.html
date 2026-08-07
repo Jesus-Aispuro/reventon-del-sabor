@@ -6,7 +6,7 @@
 <title>El Reventón del Sabor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="estilos.css?v=10">
+<link rel="stylesheet" href="estilos.css?v=11">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
@@ -97,35 +97,30 @@
 
   <!-- RESUMEN -->
   <section id="view-resumen" class="view">
+    <div id="rangoBtns" style="display:flex; gap:6px; margin-bottom:14px;"></div>
+
     <div class="card">
-      <h2>Hoy</h2>
       <div class="stat-grid">
-        <div class="stat"><div class="num" id="statVentasHoy">$0</div><div class="lbl">Vendido hoy</div></div>
-        <div class="stat"><div class="num" id="statGastosHoy">$0</div><div class="lbl">Gastado hoy</div></div>
+        <div class="stat"><div class="num" id="statVentasRango">$0</div><div class="lbl">Vendido</div></div>
+        <div class="stat"><div class="num" id="statGastosRango">$0</div><div class="lbl">Gastado</div></div>
+      </div>
+      <div style="margin-top:10px;" class="stat">
+        <div class="num" id="statGananciaRango">$0</div>
+        <div class="lbl">Ganancia (ventas − gastos)</div>
+      </div>
+      <div style="margin-top:10px;" class="stat" id="mermaBox">
+        <div class="num" id="statMermaRango" style="color:var(--chili);">$0</div>
+        <div class="lbl">Valor de la merma · <span id="statMermaCount">0 mermas</span></div>
+        <div class="list-sub" style="margin-top:4px;">No se resta de la ganancia; el costo ya está en los gastos.</div>
       </div>
     </div>
+
     <div class="card">
-      <h2>Todo el tiempo</h2>
-      <div class="stat-grid">
-        <div class="stat"><div class="num" id="statVentasTotal">$0</div><div class="lbl">Ventas totales</div></div>
-        <div class="stat"><div class="num" id="statGastosTotal">$0</div><div class="lbl">Gastos totales</div></div>
-      </div>
-      <div style="margin-top:10px;" class="stat" >
-        <div class="num" id="statGanancia">$0</div><div class="lbl">Ganancia (ventas − gastos)</div>
-      </div>
+      <h2>Día por día</h2>
+      <div class="list-sub" style="margin-bottom:10px;">Toca un día para ver el detalle.</div>
+      <div id="diasWrap"></div>
     </div>
-    <div class="card">
-      <h2>Merma</h2>
-      <div class="stat-grid">
-        <div class="stat"><div class="num" id="statMermaHoy">0</div><div class="lbl">Mermas hoy</div></div>
-        <div class="stat"><div class="num" id="statMermaTotal">0</div><div class="lbl">Mermas totales</div></div>
-      </div>
-      <div id="mermaList" style="margin-top:10px;"></div>
-    </div>
-    <div class="card">
-      <h2>Últimas ventas</h2>
-      <div id="ventasList"></div>
-    </div>
+
     <div class="card">
       <h2>Recuperar insumos</h2>
       <div class="list-sub" style="margin-bottom:10px;">
@@ -258,14 +253,16 @@
     </select>
     <label>Cantidad actual en existencia</label>
     <input type="number" id="iStock" placeholder="0" inputmode="decimal">
+    <label>Costo por unidad (para valuar la merma)</label>
+    <input type="number" id="iCosto" placeholder="Se calcula solo con cada compra" inputmode="decimal">
     <button class="btn btn-green" id="saveInsumoBtn" style="margin-top:6px;">Guardar</button>
     <button class="del-link" id="delInsumoBtn" style="margin-top:10px;">Eliminar insumo</button>
   </div>
 </div>
 
-<!-- El ?v=10 obliga al navegador a bajar la versión nueva en vez de usar la guardada
+<!-- El ?v=11 obliga al navegador a bajar la versión nueva en vez de usar la guardada
      en caché. IMPORTANTE: cada vez que cambies app.js o estilos.css, sube el número
      (v=7, v=8, ...) aquí y en la línea del estilos.css de arriba. -->
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

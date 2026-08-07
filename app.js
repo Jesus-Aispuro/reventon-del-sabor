@@ -253,6 +253,44 @@ const MIGRACIONES = [
         });
       }
     }
+  },
+  {
+    // Calcula el costo por unidad de cada insumo a partir de su última compra,
+    // reasigna las compras que quedaron apuntando a insumos borrados, y valúa
+    // en pesos las mermas que se registraron antes de que existiera el costo.
+    id: 'costos_y_valor_merma_v1',
+    aplicar(){
+      // 1. Rescatar compras huérfanas: quedaron apuntando a un insumo que ya no
+      //    existe (se creó a mano y luego se perdió). Se reasignan al insumo
+      //    actual que tenga el mismo nombre, para no perder ese gasto.
+      const normalizar = s => (s||'').toLowerCase()
+        .replace(/flamin\s*hot/g,'fh').replace(/[^a-z0-9]/g,'');
+      const idsVivos = new Set(insumos.map(i=>i.id));
+      compras.forEach(c=>{
+        if(!c.insumoId || idsVivos.has(c.insumoId)) return;
+        const match = insumos.find(i => normalizar(i.nombre) === normalizar(c.insumoNombre));
+        if(match){ c.insumoId = match.id; c.insumoNombre = match.nombre; }
+      });
+
+      // 2. Costo por unidad = el de la compra más reciente de ese insumo
+      const porInsumo = {};
+      [...compras].sort((a,b)=>(a.ts||0)-(b.ts||0)).forEach(c=>{
+        if(c.insumoId && c.cantidad > 0) porInsumo[c.insumoId] = c.monto / c.cantidad;
+      });
+      insumos.forEach(i=>{
+        if(i.costoUnitario === undefined && porInsumo[i.id] !== undefined){
+          i.costoUnitario = porInsumo[i.id];
+        }
+      });
+
+      // 3. Valuar las mermas anteriores con ese costo
+      ajustes.forEach(a=>{
+        if(a.valor !== undefined) return;
+        const costo = porInsumo[a.productoId] || 0;
+        a.costoUnitario = costo;
+        a.valor = (a.cantidad || 0) * costo;
+      });
+    }
   }
 ];
 
@@ -261,7 +299,7 @@ async function aplicarMigraciones(hechas){
   if(pendientes.length === 0) return false;
   pendientes.forEach(m => m.aplicar());
   await docRef.set({
-    productos, insumos,
+    productos, insumos, compras, ajustes,
     migraciones: hechas.concat(pendientes.map(m=>m.id))
   }, {merge:true});
   return true;
@@ -798,11 +836,16 @@ async function guardarAjuste(){
   const delta = tipo === 'perdida' ? -cantidad : cantidad;
   item.stock += delta;
 
+  // Se guarda el costo del momento: si mañana cambia el precio del insumo,
+  // esta merma sigue valuada a lo que costaba cuando ocurrió.
+  const costoUnitario = item.costoUnitario || 0;
+
   ajustes.push({
     id: uid(), fecha: todayStr(), ts: Date.now(),
     tipoArticulo: ajustandoTipoArticulo,
     productoId: item.id, productoNombre: item.nombre,
-    tipo, cantidad, motivo
+    tipo, cantidad, motivo,
+    costoUnitario, valor: cantidad * costoUnitario
   });
 
   if(esInsumo){
@@ -905,6 +948,7 @@ function openNewInsumo(){
   document.getElementById('iCategoria').value = INSUMO_CATEGORIAS[0];
   document.getElementById('iUnidad').value = 'pieza';
   document.getElementById('iStock').value = '';
+  document.getElementById('iCosto').value = '';
   document.getElementById('delInsumoBtn').style.display = 'none';
   document.getElementById('insumoModalBg').classList.add('show');
 }
@@ -918,6 +962,7 @@ function openEditInsumo(id){
   document.getElementById('iCategoria').value = i.categoria;
   document.getElementById('iUnidad').value = i.unidad;
   document.getElementById('iStock').value = i.stock;
+  document.getElementById('iCosto').value = i.costoUnitario !== undefined ? i.costoUnitario : '';
   document.getElementById('delInsumoBtn').style.display = 'inline-block';
   document.getElementById('insumoModalBg').classList.add('show');
 }
@@ -927,12 +972,17 @@ async function saveInsumo(){
   const categoria = document.getElementById('iCategoria').value;
   const unidad = document.getElementById('iUnidad').value;
   const stock = parseFloat(document.getElementById('iStock').value) || 0;
+  const costoTxt = document.getElementById('iCosto').value.trim();
+  const costoUnitario = costoTxt === '' ? undefined : (parseFloat(costoTxt) || 0);
   if(!nombre){ showToast('Ponle un nombre'); return; }
   if(editingInsumoId){
     const i = insumos.find(x=>x.id===editingInsumoId);
     Object.assign(i, {nombre, categoria, unidad, stock});
+    if(costoUnitario !== undefined) i.costoUnitario = costoUnitario;
   }else{
-    insumos.push({id:uid(), nombre, categoria, unidad, stock});
+    const nuevo = {id:uid(), nombre, categoria, unidad, stock};
+    if(costoUnitario !== undefined) nuevo.costoUnitario = costoUnitario;
+    insumos.push(nuevo);
   }
   await saveInsumos();
   document.getElementById('insumoModalBg').classList.remove('show');
@@ -1021,6 +1071,9 @@ async function addCompra(){
   if(cantidad<=0 || monto<=0){ showToast('Falta la cantidad o el monto'); return; }
 
   ins.stock += cantidad;
+  // El costo por unidad se actualiza con el ÚLTIMO precio pagado.
+  // Sirve para valuar la merma en pesos.
+  ins.costoUnitario = monto / cantidad;
   compras.push({
     id:uid(), fecha:todayStr(), ts:Date.now(),
     insumoId: ins.id, insumoNombre: ins.nombre, unidad: ins.unidad,
@@ -1080,57 +1133,155 @@ async function reconstruirInsumosDesdeCompras(){
 }
 
 // ---------- RESUMEN ----------
+let rangoResumen = 'hoy';        // 'hoy' | 'semana' | 'mes' | 'todo'
+let diasAbiertos = {};           // qué días están desplegados
+
+function setRango(r){
+  rangoResumen = r;
+  diasAbiertos = {};
+  renderResumen();
+}
+function toggleDia(fecha){
+  diasAbiertos[fecha] = !diasAbiertos[fecha];
+  renderResumen();
+}
+
+// Fecha (YYYY-MM-DD) desde la que cuenta el rango elegido
+function inicioDelRango(){
+  const d = new Date();
+  if(rangoResumen === 'semana') d.setDate(d.getDate() - 6);   // hoy + 6 días atrás
+  else if(rangoResumen === 'mes') d.setDate(d.getDate() - 29);
+  else if(rangoResumen === 'todo') return '0000-00-00';
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dia=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dia}`;
+}
+
+function enRango(fecha){ return fecha >= inicioDelRango(); }
+
+// Valor en pesos de una merma. Usa el costo guardado al momento; si es una
+// merma vieja sin valor, cae al costo actual del insumo.
+function valorMerma(a){
+  if(a.valor !== undefined) return a.valor;
+  const ins = insumos.find(x=>x.id===a.productoId);
+  return (a.cantidad||0) * ((ins && ins.costoUnitario) || 0);
+}
+
+function fechaBonita(f){
+  const [y,m,d] = f.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  const txt = dt.toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
+  if(f === todayStr()) return 'Hoy — ' + txt;
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
 function renderResumen(){
-  const hoy = todayStr();
-  const ventasHoy = ventas.filter(v=>v.fecha===hoy).reduce((s,v)=>s+v.total,0);
-  const gastosHoy = compras.filter(c=>c.fecha===hoy).reduce((s,c)=>s+c.monto,0);
-  const ventasTotal = ventas.reduce((s,v)=>s+v.total,0);
-  const gastosTotal = compras.reduce((s,c)=>s+c.monto,0);
-  document.getElementById('statVentasHoy').textContent = fmt(ventasHoy);
-  document.getElementById('statGastosHoy').textContent = fmt(gastosHoy);
-  document.getElementById('statVentasTotal').textContent = fmt(ventasTotal);
-  document.getElementById('statGastosTotal').textContent = fmt(gastosTotal);
-  document.getElementById('statGanancia').textContent = fmt(ventasTotal - gastosTotal);
-
-  // Mermas de hoy y totales (solo cuenta de ajustes tipo "perdida")
-  const mermasHoy = ajustes.filter(a=>a.tipo==='perdida' && a.fecha===hoy).length;
-  const mermasTotal = ajustes.filter(a=>a.tipo==='perdida').length;
-  const elMermaHoy = document.getElementById('statMermaHoy');
-  const elMermaTotal = document.getElementById('statMermaTotal');
-  if(elMermaHoy) elMermaHoy.textContent = mermasHoy;
-  if(elMermaTotal) elMermaTotal.textContent = mermasTotal;
-
-  const mermaList = document.getElementById('mermaList');
-  if(mermaList){
-    const mermas = [...ajustes].filter(a=>a.tipo==='perdida').sort((a,b)=>b.ts-a.ts).slice(0,10);
-    if(mermas.length === 0){
-      mermaList.innerHTML = '<div class="empty">Sin mermas registradas todavía.</div>';
-    }else{
-      mermaList.innerHTML = mermas.map(a=>`
-        <div class="list-row">
-          <div class="list-main">
-            <div class="list-title">${escapeHtml(a.productoNombre)}${a.motivo ? ' · '+escapeHtml(a.motivo) : ''}</div>
-            <div class="list-sub">${a.fecha} · ${a.tipoArticulo === 'insumo' ? 'Insumo' : 'Producto'}</div>
-          </div>
-          <div class="pill" style="background:#FBEAE1;color:#D6482B;">−${a.cantidad}</div>
-        </div>
-      `).join('');
-    }
+  // --- Botones de rango ---
+  const cont = document.getElementById('rangoBtns');
+  if(cont){
+    const opciones = [['hoy','Hoy'],['semana','7 días'],['mes','30 días'],['todo','Todo']];
+    cont.innerHTML = opciones.map(([val,txt])=>
+      `<button class="btn btn-sm ${rangoResumen===val?'btn-chili':'btn-ghost'}" style="flex:1;"
+        onclick="setRango('${val}')">${txt}</button>`).join('');
   }
 
-  const list = document.getElementById('ventasList');
-  if(ventas.length===0){ list.innerHTML='<div class="empty">Aún no hay ventas.</div>'; return; }
-  const sorted = [...ventas].sort((a,b)=>b.ts-a.ts).slice(0,15);
-  list.innerHTML = sorted.map(v=>`
-    <div class="list-row">
-      <div class="list-main">
-        <div class="list-title">${v.items.map(i=>i.cantidad+'x '+escapeHtml(i.nombre)).join(', ')}</div>
-        <div class="list-sub">${v.fecha}</div>
-      </div>
-      <div class="pill">${fmt(v.total)}</div>
-      <button class="btn btn-ghost btn-sm" onclick="cancelarVenta('${v.id}')">Cancelar</button>
-    </div>
-  `).join('');
+  // --- Totales del rango ---
+  const vR = ventas.filter(v=>enRango(v.fecha));
+  const cR = compras.filter(c=>enRango(c.fecha));
+  const mR = ajustes.filter(a=>a.tipo==='perdida' && enRango(a.fecha));
+
+  const totalVentas = vR.reduce((s,v)=>s+v.total,0);
+  const totalGastos = cR.reduce((s,c)=>s+c.monto,0);
+  const totalMerma  = mR.reduce((s,a)=>s+valorMerma(a),0);
+
+  document.getElementById('statVentasRango').textContent = fmt(totalVentas);
+  document.getElementById('statGastosRango').textContent = fmt(totalGastos);
+  document.getElementById('statGananciaRango').textContent = fmt(totalVentas - totalGastos);
+  document.getElementById('statMermaRango').textContent = fmt(totalMerma);
+  document.getElementById('statMermaCount').textContent =
+    mR.length + (mR.length===1 ? ' merma registrada' : ' mermas registradas');
+
+  // --- Desglose día por día ---
+  const dias = {};
+  const meter = (fecha, tipo, obj) => {
+    if(!dias[fecha]) dias[fecha] = {ventas:[], compras:[], mermas:[]};
+    dias[fecha][tipo].push(obj);
+  };
+  vR.forEach(v=>meter(v.fecha,'ventas',v));
+  cR.forEach(c=>meter(c.fecha,'compras',c));
+  mR.forEach(a=>meter(a.fecha,'mermas',a));
+
+  const fechas = Object.keys(dias).sort().reverse();
+  const wrap = document.getElementById('diasWrap');
+
+  if(fechas.length === 0){
+    wrap.innerHTML = '<div class="empty">No hay movimientos en este periodo.</div>';
+    return;
+  }
+
+  wrap.innerHTML = fechas.map(f=>{
+    const dd = dias[f];
+    const vend = dd.ventas.reduce((s,v)=>s+v.total,0);
+    const gast = dd.compras.reduce((s,c)=>s+c.monto,0);
+    const merm = dd.mermas.reduce((s,a)=>s+valorMerma(a),0);
+    const abierto = diasAbiertos[f] === true;
+
+    const detalle = !abierto ? '' : `
+      <div class="dia-detalle">
+        ${dd.ventas.length ? `<div class="dia-seccion">
+          <div class="dia-seccion-tit">Ventas</div>
+          ${dd.ventas.sort((a,b)=>b.ts-a.ts).map(v=>`
+            <div class="list-row">
+              <div class="list-main">
+                <div class="list-title">${v.items.map(i=>i.cantidad+'x '+escapeHtml(i.nombre)).join(', ')}</div>
+              </div>
+              <div class="pill">${fmt(v.total)}</div>
+              <button class="btn btn-ghost btn-sm" onclick="cancelarVenta('${v.id}')">Cancelar</button>
+            </div>`).join('')}
+        </div>` : ''}
+
+        ${dd.compras.length ? `<div class="dia-seccion">
+          <div class="dia-seccion-tit">Compras</div>
+          ${dd.compras.sort((a,b)=>b.ts-a.ts).map(c=>`
+            <div class="list-row">
+              <div class="list-main">
+                <div class="list-title">${escapeHtml(c.insumoNombre||'')}</div>
+                <div class="list-sub">${c.cantidad} ${UNIDAD_LABEL[c.unidad]||c.unidad||''}</div>
+              </div>
+              <div class="pill">${fmt(c.monto)}</div>
+            </div>`).join('')}
+        </div>` : ''}
+
+        ${dd.mermas.length ? `<div class="dia-seccion">
+          <div class="dia-seccion-tit">Merma</div>
+          ${dd.mermas.sort((a,b)=>b.ts-a.ts).map(a=>`
+            <div class="list-row">
+              <div class="list-main">
+                <div class="list-title">${escapeHtml(a.productoNombre)}</div>
+                <div class="list-sub">${a.cantidad} ${a.motivo ? '· '+escapeHtml(a.motivo) : ''}</div>
+              </div>
+              <div class="pill" style="background:#FBEAE1;color:#D6482B;">
+                ${valorMerma(a) > 0 ? '−'+fmt(valorMerma(a)) : 'sin costo'}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+
+    return `
+      <div class="dia-card">
+        <button class="dia-header" onclick="toggleDia('${f}')">
+          <div>
+            <div class="dia-fecha">${fechaBonita(f)}</div>
+            <div class="dia-nums">
+              <span class="dia-vend">+${fmt(vend)}</span>
+              ${gast>0 ? `<span class="dia-gast">−${fmt(gast)}</span>` : ''}
+              ${merm>0 ? `<span class="dia-merm">merma ${fmt(merm)}</span>` : ''}
+            </div>
+          </div>
+          <span class="cat-chevron-big">${abierto ? '▾' : '▸'}</span>
+        </button>
+        ${detalle}
+      </div>`;
+  }).join('');
 }
 
 // Cancela una venta: la borra del historial y REGRESA los insumos al inventario.

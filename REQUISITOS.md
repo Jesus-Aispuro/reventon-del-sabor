@@ -95,10 +95,24 @@ Dos pestañas:
 - Al guardar, **aumenta el stock de ese insumo** y queda el gasto registrado.
 
 ### Resumen
-- Vendido y gastado **hoy**.
-- Ventas, gastos y ganancia **de todo el tiempo**.
-- **Merma**: cuántas hoy, cuántas en total, y las más recientes.
-- Últimas ventas, cada una con botón **Cancelar**.
+Arriba, botones de rango: **Hoy / 7 días / 30 días / Todo**. Todo lo de abajo
+responde al rango elegido.
+
+- Totales: vendido, gastado y ganancia (ventas − gastos).
+- **Valor de la merma** en pesos, como dato aparte. NO se resta de la ganancia:
+  el costo de esos insumos ya está contado en los gastos cuando se compraron;
+  restarlo otra vez sería contarlo doble.
+- **Día por día**: una tarjeta por día con lo vendido, gastado y mermado. Al tocarla
+  se despliegan las ventas (con su botón Cancelar), las compras y las mermas de ese día.
+
+### Costo de los insumos y valor de la merma
+Cada insumo tiene un **costo por unidad**:
+- Se actualiza solo con cada compra (monto ÷ cantidad), usando el **último precio pagado**.
+- También se puede escribir a mano en Inventario → Insumos → Editar, útil para
+  insumos que todavía no se han comprado desde la app.
+
+Cuando se registra una merma se guarda el costo de ese momento, así que si mañana
+sube el precio, la merma vieja sigue valuada a lo que costaba cuando ocurrió.
 
 ### Cancelar una venta
 Se hace desde Resumen → Cancelar. Eso borra la venta **y regresa los insumos**
